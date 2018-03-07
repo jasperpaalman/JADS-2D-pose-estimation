@@ -1,6 +1,7 @@
 import cv2
 #import methods
 import pickle
+import numpy as np
 
 
 # cam = cv2.VideoCapture(r'C:\Users\jaspe\tf-openpose\clips\20180205_182104.mp4')
@@ -26,4 +27,18 @@ print(people_per_file[0])
 # 	(0, 15), (15, 17), (2, 16), (5, 17)
 # ]
 
+# Todo: replace none with sensible stuff
+normalized_moved_distance_per_person = methods.normalize_moved_distance_per_person(None)
+
+# Only include identified people that move more than a set movement threshold
+maximum_normalized_distance = max(normalized_moved_distance_per_person.values())
+movement_threshold = maximum_normalized_distance / 4
+moving_people = [key for key, value in normalized_moved_distance_per_person.items() if value > movement_threshold]
+
+plottables_per_file, period_person_division = methods.get_plottables_per_file_and_period_person_division(people_per_file, fps, connections)
+
+mean_x_per_person = methods.get_mean_x_per_person(period_person_division)
+
+mean_x_per_moving_person = {key: np.array([[period, x] for period, x in value.items()])
+	                            for key, value in mean_x_per_person.items() if key in moving_people}
 
