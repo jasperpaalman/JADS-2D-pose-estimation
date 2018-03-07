@@ -1,13 +1,11 @@
 import json
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 import os
-import pickle
-import plotly as py
 import plotly.plotly as py
 import plotly.graph_objs as go
 import pandas as pd
+from sklearn.cluster import DBSCAN
 
 # pip install .whl file from https://www.lfd.uci.edu/~gohlke/pythonlibs/#opencv
 # pip install numpy --upgrade if numpy.multiarray error
@@ -38,7 +36,7 @@ def rmse(a, b):
 
 
 # Getting plottable information per file
-def get_plottables_per_file(people_per_file, period, file, fps, connections):
+def get_plottables_per_file_and_period_person_division(people_per_file, fps, connections):
 	plottables_per_file = []  # used for plotting all the coordinates and connected body part lines
 
 	# for each period all 'people' are stored. For a certain period this will allow us to look back in time at the previous x frames
@@ -146,10 +144,10 @@ def get_plottables_per_file(people_per_file, period, file, fps, connections):
 
 		plottables_per_file.append(
 			plottables)  # append plottables_per_file with the plottables dictionary for this frame
-	return plottables_per_file
+	return plottables_per_file, period_person_division
 
 
-def plot_fit(plottables_per_file, period, f, ax):
+def plot_fit(plottables_per_file, period, f, ax, image_w, image_h):
 	plot_coords = plottables_per_file[period]['plot_coords']
 	plot_lines = plottables_per_file[period]['plot_lines']
 
@@ -165,164 +163,102 @@ def plot_fit(plottables_per_file, period, f, ax):
 	ax.clear()
 
 
-# In[ ]:
-
-
-get_ipython().run_line_magic('matplotlib', 'notebook')
-
-# In[ ]:
-
-
-# f, ax = plt.subplots(figsize=(14,10))
-# xspeed = 4
-
-# for t in range(0, len(plottables_per_file)):
-#     plot_fit(plottables_per_file, period=t, f=f, ax=ax)
-# #     time.sleep(1/fps/xspeed)
-
-
-# ## Extracting person under observation
-
-# *Identifying moving people*
-
-# In[ ]:
-
-
 # Basically change the layout of the dictionary
 # Now you first index based on the person and then you index based on the period
-
-person_period_division = {}
-for person in set(chain.from_iterable(period_person_division.values())):
-	person_period_division[person] = {}
-	for period in period_person_division.keys():
-		period_dictionary = period_person_division[period]
-		if person in period_dictionary:
-			person_period_division[person][period] = period_dictionary[person]
-
-# In[ ]:
+def get_person_period_division(period_person_division):
+	person_period_division = {}
+	for person in set(chain.from_iterable(period_person_division.values())):
+		person_period_division[person] = {}
+		for period in period_person_division.keys():
+			period_dictionary = period_person_division[period]
+			if person in period_dictionary:
+				person_period_division[person][period] = period_dictionary[person]
+	return person_period_division
 
 
 # Calculate the mean x-position of a person in a certain period
-
-mean_x_per_person = {person: {period: np.mean(coords[~(coords == 0).any(axis=1), 0])
-                              for period, coords in time_coord_dict.items()}
-                     for person, time_coord_dict in person_period_division.items()}
-
-# In[ ]:
+def get_mean_x_per_person(person_period_division):
+	return {person: {period: np.mean(coords[~(coords == 0).any(axis=1), 0])
+	                 for period, coords in time_coord_dict.items()}
+	        for person, time_coord_dict in person_period_division.items()}
 
 
 # Calculate moved distance by summing the absolute difference over periods
 # Normalize moved distance per identified person over frames by including the average frame difference and the length
 # of the number of frames included
+def normalize_moved_distance_per_person(mean_x_per_person):
+	return {
+		person: pd.Series(mean_x_dict).diff().abs().sum() / (
+				np.diff(pd.Series(mean_x_dict).index).mean() * len(mean_x_dict))
+		for person, mean_x_dict in mean_x_per_person.items()}
 
-normalized_moved_distance_per_person = {
-	person: pd.Series(mean_x_dict).diff().abs().sum() / (
-			np.diff(pd.Series(mean_x_dict).index).mean() * len(mean_x_dict))
-	for person, mean_x_dict in mean_x_per_person.items()}
-
-# In[ ]:
-
-
-# Only include identified people that move more than a set movement threshold
-
-maximum_normalized_distance = max(normalized_moved_distance_per_person.values())
-movement_threshold = maximum_normalized_distance / 4
-moving_people = [key for key, value in normalized_moved_distance_per_person.items() if value > movement_threshold]
 
 # *Finding person under observation based on clustering with DBSCAN*
 
-# In[ ]:
+def get_person_plottables_df(mean_x_per_person, moving_people):
+	return pd.DataFrame(
+		[(period, person, x) for person, period_dict in mean_x_per_person.items() if person in moving_people
+		 for period, x in period_dict.items()], columns=['Period', 'Person', 'X mean'])
 
 
-person_plottables_df = pd.DataFrame(
-	[(period, person, x) for person, period_dict in mean_x_per_person.items() if person in moving_people
-	 for period, x in period_dict.items()], columns=['Period', 'Person', 'X mean'])
+def get_dbscan_subsets(maximum_normalized_distance, mean_x_per_person, person_plottables_df, moving_people):
+	db = DBSCAN(eps=maximum_normalized_distance * 2, min_samples=1)
 
-# In[ ]:
+	db.fit(person_plottables_df[['Period', 'X mean']])
 
+	person_plottables_df['labels'] = db.labels_
 
-get_ipython().run_line_magic('matplotlib', 'inline')
+	maximum_label = person_plottables_df.groupby('labels').apply(len).sort_values(ascending=False).index[0]
 
-# In[ ]:
+	# In[ ]:
 
+	DBSCAN_subsets = person_plottables_df.groupby('labels')['Person'].unique().tolist()
 
-pd.DataFrame({key: value for key, value in mean_x_per_person.items() if key in moving_people}).plot()
-
-# In[ ]:
-
-
-from sklearn.cluster import DBSCAN
-
-db = DBSCAN(eps=maximum_normalized_distance * 2, min_samples=1)
-
-db.fit(person_plottables_df[['Period', 'X mean']])
-
-person_plottables_df['labels'] = db.labels_
-
-maximum_label = person_plottables_df.groupby('labels').apply(len).sort_values(ascending=False).index[0]
-
-# In[ ]:
+	return [list(i) for i in DBSCAN_subsets]
 
 
-DBSCAN_subsets = person_plottables_df.groupby('labels')['Person'].unique().tolist()
+def getLinks(moving_people, mean_x_per_moving_person):
+	links = []
+	for n, person in enumerate(moving_people):
+		x = mean_x_per_moving_person[person][:, 0]
+		y = mean_x_per_moving_person[person][:, 1]
 
-DBSCAN_subsets = [list(i) for i in DBSCAN_subsets]
+		# calculate polynomial
+		z = np.polyfit(x, y, 1)
+		f = np.poly1d(z)
 
-# *Supplementing DBSCAN result with person-specific extrapolation and matching based on RMSE*
+		if n > 0:
+			previous_person = moving_people[n - 1]
 
-# In[ ]:
+			previous_x = mean_x_per_moving_person[previous_person][:, 0]
+			previous_y = mean_x_per_moving_person[previous_person][:, 1]
 
+			previous_rmse = rmse(f(previous_x), previous_y)
 
-mean_x_per_moving_person = {key: np.array([[period, x] for period, x in value.items()])
-                            for key, value in mean_x_per_person.items() if key in moving_people}
+			links.append((previous_person, person, previous_rmse))
 
-# In[ ]:
+		if n < len(moving_people) - 1:
+			next_person = moving_people[n + 1]
 
+			next_x = mean_x_per_moving_person[next_person][:, 0]
+			next_y = mean_x_per_moving_person[next_person][:, 1]
 
-links = []
-for n, person in enumerate(moving_people):
-	x = mean_x_per_moving_person[person][:, 0]
-	y = mean_x_per_moving_person[person][:, 1]
+			next_rmse = rmse(f(next_x), next_y)
 
-	# calculate polynomial
-	z = np.polyfit(x, y, 1)
-	f = np.poly1d(z)
-
-	if n > 0:
-		previous_person = moving_people[n - 1]
-
-		previous_x = mean_x_per_moving_person[previous_person][:, 0]
-		previous_y = mean_x_per_moving_person[previous_person][:, 1]
-
-		previous_rmse = rmse(f(previous_x), previous_y)
-
-		links.append((previous_person, person, previous_rmse))
-
-	if n < len(moving_people) - 1:
-		next_person = moving_people[n + 1]
-
-		next_x = mean_x_per_moving_person[next_person][:, 0]
-		next_y = mean_x_per_moving_person[next_person][:, 1]
-
-		next_rmse = rmse(f(next_x), next_y)
-
-		links.append((person, next_person, next_rmse))
-
-# In[ ]:
+			links.append((person, next_person, next_rmse))
+		return links
 
 
 # Averaging RMSE between links
-link_rmse = np.array(
-	[(key, np.mean(np.array(list(group))[:, 2])) for key, group in groupby(links, lambda x: (x[0], x[1]))])
+def average_rmse_between_links(maximum_normalized_distance, links):
+	link_rmse = np.array(
+		[(key, np.mean(np.array(list(group))[:, 2])) for key, group in groupby(links, lambda x: (x[0], x[1]))])
 
-# Use threshold on RMSE to get linked people
-linked_people = link_rmse[link_rmse[:, 1] < maximum_normalized_distance * 2][:, 0]
+	# Use threshold on RMSE to get linked people
+	linked_people = link_rmse[link_rmse[:, 1] < maximum_normalized_distance * 2][:, 0]
 
-# Setting in right format
-linked_people = [list(i) for i in linked_people]
-
-# In[ ]:
-
+	# Setting in right format
+	linked_people = [list(i) for i in linked_people]
 
 # Merge lists that share common elements
 
@@ -476,11 +412,8 @@ coord_df.to_csv('coordinate_df')
 
 coord_df.head()
 
-
-
 # #you need to create an account an get an ID in order to be able to run this
 py.tools.set_credentials_file(username='colinvl', api_key='1OPZLs5vGngi8R4dDulM')
-
 
 # In[ ]:
 
