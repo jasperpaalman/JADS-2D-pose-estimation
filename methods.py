@@ -214,7 +214,7 @@ def get_person_plottables_df(mean_x_per_person, moving_people):
 		 for period, x in period_dict.items()], columns=['Period', 'Person', 'X mean'])
 
 
-def get_dbscan_subsets(maximum_normalized_distance, mean_x_per_person, person_plottables_df, moving_people):
+def get_dbscan_subsets(maximum_normalized_distance, person_plottables_df):
 	db = DBSCAN(eps=maximum_normalized_distance * 2, min_samples=1)
 
 	db.fit(person_plottables_df[['Period', 'X mean']])
@@ -230,7 +230,7 @@ def get_dbscan_subsets(maximum_normalized_distance, mean_x_per_person, person_pl
 	return [list(i) for i in DBSCAN_subsets]
 
 
-def getLinks(moving_people, mean_x_per_moving_person):
+def get_links(moving_people, mean_x_per_moving_person):
 	links = []
 	for n, person in enumerate(moving_people):
 		x = mean_x_per_moving_person[person][:, 0]
@@ -263,62 +263,17 @@ def getLinks(moving_people, mean_x_per_moving_person):
 
 
 # Averaging RMSE between links
-def average_rmse_between_links(maximum_normalized_distance, links):
+def get_linked_people(maximum_normalized_distance, links):
 	link_rmse = np.array(
 		[(key, np.mean(np.array(list(group))[:, 2])) for key, group in groupby(links, lambda x: (x[0], x[1]))])
-
 	# Use threshold on RMSE to get linked people
 	linked_people = link_rmse[link_rmse[:, 1] < maximum_normalized_distance * 2][:, 0]
 
 	# Setting in right format
-	linked_people = [list(i) for i in linked_people]
-
-# Merge lists that share common elements
-
-plottable_subsets = DBSCAN_subsets + linked_people
-
-all_moving_people = set(chain.from_iterable(plottable_subsets))
-
-for each in all_moving_people:
-	components = [x for x in plottable_subsets if each in x]
-	for i in components:
-		plottable_subsets.remove(i)
-	plottable_subsets += [list(set(chain.from_iterable(components)))]
-
-# In[ ]:
+	return [list(i) for i in linked_people]
 
 
-plottable_people = plottable_subsets[
-	np.argmax([sum([len(person_period_division[person]) for person in subset]) for subset in plottable_subsets])]
-
-# In[ ]:
-
-
-turning_point_index = person_plottables_df[person_plottables_df['Person'].isin(plottable_people)]['X mean'].argmin()
-
-# In[ ]:
-
-
-turning_point = person_plottables_df.loc[turning_point_index, 'Period']
-
-# ## Plot person under observation
-
-# In[ ]:
-
-
-person_plottables = [{person: coords for person, coords in period_dictionary.items() if person in plottable_people}
-                     for period, period_dictionary in period_person_division.items()]
-
-# In[ ]:
-
-
-person_plottables = list(filter(lambda x: x != {}, person_plottables))
-
-
-# In[ ]:
-
-
-def plot_person(plottables, f, ax):
+def plot_person(plottables, f, ax, connections):
 	for person in plottables.keys():
 		plot_coords = plottables[person]
 
@@ -348,30 +303,8 @@ def plot_person(plottables, f, ax):
 	ax.clear()
 
 
-# In[ ]:
-
-
-get_ipython().run_line_magic('matplotlib', 'notebook')
-
-# In[ ]:
-
-
-f, ax = plt.subplots(figsize=(14, 10))
-xspeed = 4
-
-for t in range(len(person_plottables)):
-	plot_person(person_plottables[t], f=f, ax=ax)
-
-
-#     time.sleep(1/fps/xspeed)
-
-
-# ## Plotting coordinates of joints
-
-# In[ ]:
-
-
-def prepare_data_for_plotting(period_person_division, plottable_people):
+# Plotting coordinates of joints
+def prepare_data_for_plotting(period_person_division, plottable_people, turning_point):
 	coord_list = []
 	for period, period_dictionary in period_person_division.items():
 		for person, coords in period_dictionary.items():
@@ -386,120 +319,103 @@ def prepare_data_for_plotting(period_person_division, plottable_people):
 # In[ ]:
 
 
-coord_list = prepare_data_for_plotting(period_person_division, plottable_people)
-
 # *To dataframe*
 
 # In[ ]:
 
+def get_dataframe_from_coords(coord_list):
+	coord_df = pd.DataFrame(coord_list)
 
-coord_df = pd.DataFrame(coord_list)
+	coord_df.columns = ['Nose', 'Neck', 'Right Shoulder', 'Right Elbow', 'Right Hand',
+	                    'Left Shoulder', 'Left Elbow', 'Left Hand',
+	                    'Right Hip', 'Right Knee', 'Right Foot', 'Left Hip', 'Left Knee', 'Left Foot',
+	                    'Right Eye', 'Left Eye', 'Right Ear', 'Left Ear']
 
-coord_df.columns = ['Nose', 'Neck', 'Right Shoulder', 'Right Elbow', 'Right Hand',
-                    'Left Shoulder', 'Left Elbow', 'Left Hand',
-                    'Right Hip', 'Right Knee', 'Right Foot', 'Left Hip', 'Left Knee', 'Left Foot',
-                    'Right Eye', 'Left Eye', 'Right Ear', 'Left Ear']
+	# add the frame number
+	coord_df['Frame'] = coord_df.index
 
-# add the frame number
-coord_df['Frame'] = coord_df.index
+	# melt the dataframe to get the locations in one row
+	coord_df = pd.melt(coord_df, id_vars='Frame', var_name='Point', value_name='Location')
 
-# melt the dataframe to get the locations in one row
-coord_df = pd.melt(coord_df, id_vars='Frame', var_name='Point', value_name='Location')
+	# remove unecessary signs, for some unclear reason this is not necessary after splitting
+	# coord_df['Location'] = coord_df.Location.apply(lambda x: str(x).replace('[', ''))
+	# coord_df['Location'] = coord_df.Location.apply(lambda x: str(x).replace(']', ''))
 
-# remove unecessary signs, for some unclear reason this is not necessary after splitting
-# coord_df['Location'] = coord_df.Location.apply(lambda x: str(x).replace('[', ''))
-# coord_df['Location'] = coord_df.Location.apply(lambda x: str(x).replace(']', ''))
+	# split up the coordinates and put them into separate columns
+	coord_df['Split'] = coord_df.Location.apply(lambda x: str(x).split('  '))
+	coord_df['x'] = coord_df.Location.str.get(0)
+	coord_df['y'] = coord_df.Location.str.get(1)
 
-# split up the coordinates and put them into separate columns
-coord_df['Split'] = coord_df.Location.apply(lambda x: str(x).split('  '))
-coord_df['x'] = coord_df.Location.str.get(0)
-coord_df['y'] = coord_df.Location.str.get(1)
+	# delete irrelevant columns
+	del coord_df['Split']
+	del coord_df['Location']
 
-# delete irrelevant columns
-del coord_df['Split']
-del coord_df['Location']
+	return coord_df
 
-coord_df.to_csv('coordinate_df')
-
-# coord_df = coord_df[coord_df['x'] <= 1780]
-
-coord_df.head()
-
-# #you need to create an account an get an ID in order to be able to run this
-py.tools.set_credentials_file(username='colinvl', api_key='1OPZLs5vGngi8R4dDulM')
-
-# In[ ]:
-
-
-pointlist = coord_df.Point.value_counts().index.tolist()
-points = []
-
-for i in range(len(pointlist)):
-	pointdf = coord_df[(coord_df['Point'] == pointlist[i])]
-	trace = go.Scatter(
-		# df = worldbank[(worldbank['Country'] == 'Belgium')],
-		x=pointdf['x'],
-		y=pointdf['y'],
-		mode='markers',
-		name=pointlist[i],
-		text=pointdf['Frame'],
-		opacity=0.7,
-		marker=dict(
-			size='5',  # makes the dots invisible, can't get rid of them somehow
-			color=i
+# todo: @collin kan jij nog naar deze functie kijken
+def print_to_plotly(pointlist, coord_df):
+	points = []
+	for i in range(len(pointlist)):
+		pointdf = coord_df[(coord_df['Point'] == pointlist[i])]
+		trace = go.Scatter(
+			# df = worldbank[(worldbank['Country'] == 'Belgium')],
+			x=pointdf['x'],
+			y=pointdf['y'],
+			mode='markers',
+			name=pointlist[i],
+			text=pointdf['Frame'],
+			opacity=0.7,
+			marker=dict(
+				size='5',  # makes the dots invisible, can't get rid of them somehow
+				color=i
+			)
 		)
+		points.append(trace)
+
+	layout = dict(
+		title='Open Pose coordinate tracker',
+		hovermode='closest',
+		yaxis=dict(
+			#         rangeslider=dict(),
+			#         type='date'
+			range=[-600, -300]
+		)
+		#     ylim = (-600, 300)
 	)
-	points.append(trace)
 
-layout = dict(
-	title='Open Pose coordinate tracker',
-	hovermode='closest',
-	yaxis=dict(
-		#         rangeslider=dict(),
-		#         type='date'
-		range=[-600, -300]
+	fig = dict(data=points, layout=layout)
+	py.iplot(fig, filename="Open pose runtracker")
+	# py.offline.iplot(fig, filename = "Open pose runtracker")
+
+	# TODO: @collin Why do we do almost the same thing twice?
+	pointlist = coord_df.Point.value_counts().index.tolist()
+	for i in range(len(pointlist)):
+		pointdf = coord_df[(coord_df['Point'] == pointlist[i])]
+		trace = go.Box(
+			# df = worldbank[(worldbank['Country'] == 'Belgium')],
+			y=pointdf['y'],
+			# boxpoints = 'all',
+			name=pointlist[i],
+			#         text = pointdf['Frame'],
+			opacity=0.7,
+			#         marker=dict(
+			#             size='5', #makes the dots invisible, can't get rid of them somehow
+			#             color = i
+			#         )
+		)
+		points.append(trace)
+
+	layout = dict(
+		title='Open Pose',
+		hovermode='closest',
+		yaxis=dict(
+			#         rangeslider=dict(),
+			#         type='date'
+			range=[-600, -300]
+		)
+		#     ylim = (-600, 300)
 	)
-	#     ylim = (-600, 300)
-)
 
-fig = dict(data=points, layout=layout)
-py.iplot(fig, filename="Open pose runtracker")
-# py.offline.iplot(fig, filename = "Open pose runtracker")
-
-
-# In[ ]:
-
-
-pointlist = coord_df.Point.value_counts().index.tolist()
-points = []
-
-for i in range(len(pointlist)):
-	pointdf = coord_df[(coord_df['Point'] == pointlist[i])]
-	trace = go.Box(
-		# df = worldbank[(worldbank['Country'] == 'Belgium')],
-		y=pointdf['y'],
-		# boxpoints = 'all',
-		name=pointlist[i],
-		#         text = pointdf['Frame'],
-		opacity=0.7,
-		#         marker=dict(
-		#             size='5', #makes the dots invisible, can't get rid of them somehow
-		#             color = i
-		#         )
-	)
-	points.append(trace)
-
-layout = dict(
-	title='Open Pose',
-	hovermode='closest',
-	yaxis=dict(
-		#         rangeslider=dict(),
-		#         type='date'
-		range=[-600, -300]
-	)
-	#     ylim = (-600, 300)
-)
-
-fig = dict(data=points, layout=layout)
-py.iplot(fig, filename="Open pose runtracker boxplot")
+	fig = dict(data=points, layout=layout)
+	py.iplot(fig, filename="Open pose runtracker boxplot")
 # py.offline.iplot(fig, filename = "Open pose runtracker")
