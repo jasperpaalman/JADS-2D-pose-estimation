@@ -4,6 +4,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 import pickle
+import plotly as py
+import plotly.plotly as py
+import plotly.graph_objs as go
+import pandas as pd
 
 # pip install .whl file from https://www.lfd.uci.edu/~gohlke/pythonlibs/#opencv
 # pip install numpy --upgrade if numpy.multiarray error
@@ -472,25 +476,11 @@ coord_df.to_csv('coordinate_df')
 
 coord_df.head()
 
-# ## Plotly
 
-# In[ ]:
-
-
-# !pip install plotly
-
-
-# In[ ]:
-
-
-import plotly as py
 
 # #you need to create an account an get an ID in order to be able to run this
 py.tools.set_credentials_file(username='colinvl', api_key='1OPZLs5vGngi8R4dDulM')
 
-import plotly.plotly as py
-import plotly.graph_objs as go
-import pandas as pd
 
 # In[ ]:
 
