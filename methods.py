@@ -5,6 +5,7 @@ import os
 import plotly.plotly as py
 import plotly.graph_objs as go
 import pandas as pd
+import cv2
 from sklearn.cluster import DBSCAN
 
 # pip install .whl file from https://www.lfd.uci.edu/~gohlke/pythonlibs/#opencv
@@ -219,9 +220,9 @@ def plot_fit(plottables_per_file, period, f, ax, image_w, image_h):
     """"
 
     """
-
     plot_coords = plottables_per_file[period]['plot_coords']
     plot_lines = plottables_per_file[period]['plot_lines']
+    plt.interactive(False)
 
     plt.scatter(x=plot_coords[:, 0], y=plot_coords[:, 1])
 

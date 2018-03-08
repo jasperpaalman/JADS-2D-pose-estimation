@@ -35,6 +35,10 @@ for t in range(0, len(plottables_per_file)):
     methods.plot_fit(plottables_per_file, t, f, ax, image_w, image_h)
 #     time.sleep(1/fps/xspeed)
 
+person_period_division = methods.get_person_period_division(period_person_division)
+
+
+
 # # Todo: replace none with sensible stuff
 # normalized_moved_distance_per_person = methods.normalize_moved_distance_per_person(None)
 #
