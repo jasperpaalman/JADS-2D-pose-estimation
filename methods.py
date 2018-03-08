@@ -37,6 +37,20 @@ def get_openpose_output(location):
     return people_per_file
 
 
+def determine_video_meta_data(file_path):
+    """"
+    Extract the dimensions and frames per seconds from the video files
+
+    :param file_path: Location of the video file
+    :return: image_h image height, image_w image width, fps frames per second
+    """
+    cam = cv2.VideoCapture(file_path)
+    ret_val, image = cam.read()
+    image_h, image_w = image.shape[:2]  # getting clip resolution using opencv
+    fps = cam.get(cv2.CAP_PROP_FPS)  # getting clip frames per second using opencv
+    return image_h, image_w, fps
+
+
 def rmse(a, b):
     """"
     Function which determines the rmse error between two sets of coordinates points
@@ -49,6 +63,9 @@ def rmse(a, b):
 
 
 def calc_center_coords_of_person(person_coords, used_joints):
+    """"
+
+    """
     cx = np.mean(person_coords[used_joints, 0])  # center x-coordinate
     cy = np.mean(person_coords[used_joints, 1])  # center y-coordinate
     return cx, cy
@@ -70,10 +87,23 @@ def join_lists_on_mutual_elements(plottable_subsets):
     return plottable_subsets
 
 
-def identify_people_over_multiple_frames(empty_joints, fps, next_person, period, period_person_division, person_coords):
+def identify_people_over_multiple_frames(empty_joints, fps, period, period_person_division, person_coords):
+    """
+
+    :param empty_joints:
+    :param fps:
+    :param period:
+    :param period_person_division:
+    :param person_coords:
+
+    :type period: int
+    """
     next_person = 0  # used to create a new person when the algorithm can't find a good person fit based on previous x frames
     best_person_fit = None  # Initially no best fit person in previous x frames is found
-    if period != 0:  # period == 0 means no identified people exist, so we need to create them ourselves
+    if period == 0:  # period == 0 means no identified people exist, so we need to create them ourselves
+        period_person_division[period][next_person] = person_coords  # create new next people since it is the first period
+        next_person += 1
+    else:
         min_rmse = 1000  # set sufficiently high rmse so it will be overwritten easily
         used_joints = list(set(range(18)) - empty_joints)  # only select used joints
         cx, cy = calc_center_coords_of_person(person_coords, used_joints)
@@ -89,12 +119,10 @@ def identify_people_over_multiple_frames(empty_joints, fps, next_person, period,
 
         for i in range(1, j + 1):  # for all possible previous periods within max_frame_diff
             for earlier_person in period_person_division[period - i].keys():  # compare with all people
-                if earlier_person not in period_person_division[
-                    period].keys():  # if not already contained in current period
+                if earlier_person not in period_person_division[period].keys():  # if not already contained in current period
                     earlier_person_coords = period_person_division[period - i][earlier_person]
                     empty_joints_copy = empty_joints.copy()
-                    empty_joints_copy = empty_joints_copy | set(
-                        np.where((earlier_person_coords == 0).all(axis=1))[0])
+                    empty_joints_copy = empty_joints_copy | set(np.where((earlier_person_coords == 0).all(axis=1))[0])
                     used_joints = list(set(range(18)) - empty_joints_copy)
                     if len(used_joints) == 0:
                         continue
@@ -104,14 +132,11 @@ def identify_people_over_multiple_frames(empty_joints, fps, next_person, period,
                         if person_distance < min_rmse:  # if best fit, when compared to previous instances
                             min_rmse = person_distance  # overwrite
                             best_person_fit = earlier_person  # overwrite
-        if best_person_fit != None:  # if a best person fit is found
+        if best_person_fit is not None:  # if a best person fit is found
             period_person_division[period][best_person_fit] = person_coords
         else:  # else create new next person
             period_person_division[period][next_person] = person_coords
             next_person += 1
-    else:  # create new next people since it is the first period
-        period_person_division[period][next_person] = person_coords
-        next_person += 1
     return period_person_division
 
 
@@ -123,10 +148,11 @@ def get_plottables_per_file_and_period_person_division(people_per_file, fps, con
     """
     plottables_per_file = []  # used for plotting all the coordinates and connected body part lines
 
-    # for each period/frame all 'people' are stored. For a certain period this will allow us to look back in time at the previous x frames
+    # for each period/frame all 'people' are stored.
+    # For a certain period this will allow us to look back in time at the previous x frames
     # in order to be able to group people in disjoint frames together
 
-    period_person_division = {}
+    period_person_division = {}  # Dict of dicts
 
     for period, file in enumerate(people_per_file):
         period_person_division[
@@ -150,15 +176,14 @@ def get_plottables_per_file_and_period_person_division(people_per_file, fps, con
             # contain any information
             empty_joints = set(np.where((person_coords == 0).all(axis=1))[0])
 
-            ### Identifying people over disjoint frames ###
+            # Identifying people over disjoint frames ###
 
             period_person_division = identify_people_over_multiple_frames(empty_joints, fps, period,
                                                                           period_person_division, person_coords)
 
-        ### For plotting the entire video ###
+        # For plotting the entire video ###
 
         for person_coords in coords:  # for all people in this frame
-
             plot_coords = plot_coords + list(
                 person_coords[~(person_coords == 0).any(axis=1)])  # append present plottable coords
 
@@ -191,6 +216,10 @@ def get_plottables_per_file_and_period_person_division(people_per_file, fps, con
 
 
 def plot_fit(plottables_per_file, period, f, ax, image_w, image_h):
+    """"
+
+    """
+
     plot_coords = plottables_per_file[period]['plot_coords']
     plot_lines = plottables_per_file[period]['plot_lines']
 
