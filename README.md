@@ -1,6 +1,8 @@
 # JADS 2D pose estimation
 This repository will be used to analyse sprinting and suggest improvements in techniques.
 
+The code for the website is hosted at [Luttik / pro coach for all](https://github.com/Luttik/pro_coach_for_all)
+
 ## Setup
 The adviced way to setup your repository is as follows
 
