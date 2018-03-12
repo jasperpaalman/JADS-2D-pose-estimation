@@ -88,7 +88,7 @@ def join_lists_on_mutual_elements(plottable_subsets):
     return plottable_subsets
 
 
-def identify_people_over_multiple_frames(empty_joints, fps, period, period_person_division, person_coords):
+def identify_people_over_multiple_frames(empty_joints, fps, period, period_person_division, person_coords, next_person):
     """
 
     :param empty_joints:
@@ -99,7 +99,7 @@ def identify_people_over_multiple_frames(empty_joints, fps, period, period_perso
 
     :type period: int
     """
-    next_person = 0  # used to create a new person when the algorithm can't find a good person fit based on previous x frames
+    # next_person = 0  # used to create a new person when the algorithm can't find a good person fit based on previous x frames
     best_person_fit = None  # Initially no best fit person in previous x frames is found
     if period == 0:  # period == 0 means no identified people exist, so we need to create them ourselves
         period_person_division[period][next_person] = person_coords  # create new next people since it is the first period
@@ -113,6 +113,7 @@ def identify_people_over_multiple_frames(empty_joints, fps, period, period_perso
 
         max_frame_diff = int(
             fps // 4)  # number of frames to look back, set to 0.25 sec rather than number of frames
+        
         if period < max_frame_diff:
             j = period
         else:
@@ -138,7 +139,7 @@ def identify_people_over_multiple_frames(empty_joints, fps, period, period_perso
         else:  # else create new next person
             period_person_division[period][next_person] = person_coords
             next_person += 1
-    return period_person_division
+    return period_person_division, next_person
 
 
 # Getting plottable information per file
@@ -155,6 +156,7 @@ def get_plottables_per_file_and_period_person_division(people_per_file, fps, con
 
     period_person_division = {}  # Dict of dicts
 
+    next_person = 0
     for period, file in enumerate(people_per_file):
         period_person_division[
             period] = {}  # for a frame (period) make a new dictionary in which to store the identified people
@@ -179,8 +181,8 @@ def get_plottables_per_file_and_period_person_division(people_per_file, fps, con
 
             # Identifying people over disjoint frames ###
 
-            period_person_division = identify_people_over_multiple_frames(empty_joints, fps, period,
-                                                                          period_person_division, person_coords)
+            period_person_division, next_person = identify_people_over_multiple_frames(empty_joints, fps, period,
+                                                                          period_person_division, person_coords, next_person)
 
         # For plotting the entire video ###
 
@@ -260,13 +262,15 @@ def get_mean_x_per_person(person_period_division):
 # Normalize moved distance per identified person over frames by including the average frame difference and the length
 # of the number of frames included
 def normalize_moved_distance_per_person(mean_x_per_person):
-    return {
-        person: pd.Series(mean_x_dict).diff().abs().sum() / (
-                np.diff(pd.Series(mean_x_dict).index).mean() * len(mean_x_dict))
-        for person, mean_x_dict in mean_x_per_person.items()}
+    normalized_moved_distance_per_person = \
+        {person:pd.Series(mean_x_dict).diff().abs().sum()/(np.diff(pd.Series(mean_x_dict).index).mean()*len(mean_x_dict)) 
+         for person, mean_x_dict in mean_x_per_person.items()}
+    
+    return {key:value for key,value in normalized_moved_distance_per_person.items() if 
+                                       value == value}
 
 
-# *Finding person under observation based on clustering with DBSCAN*
+# Finding person under observation based on clustering with DBSCAN
 
 def get_person_plottables_df(mean_x_per_person, moving_people):
     return pd.DataFrame(
@@ -332,6 +336,43 @@ def get_linked_people(maximum_normalized_distance, links):
     # Setting in right format
     return [list(i) for i in linked_people]
 
+def get_running_fragments(plottable_people, mean_x_per_person, person_plottables_df):
+    plottable_people_df = person_plottables_df[person_plottables_df['Person'].isin(plottable_people)].sort_values('Period')
+    plottable_people_df = plottable_people_df.groupby('Period')['X mean'].apply(np.mean).reset_index()
+    
+    x = plottable_people_df['Period'].values
+    y = plottable_people_df['X mean'].values
+    
+    min_period = plottable_people_df['Period'].min()
+    max_period = plottable_people_df['Period'].max()
+    
+    z = np.polyfit(x, y, 50)
+    f = np.poly1d(z)
+
+    xnew = np.linspace(min_period, max_period, num=len(x)*10, endpoint=True)
+    ynew = f(xnew)
+
+    optima_ix = np.diff(np.sign(np.diff(ynew))).nonzero()[0] + 1 # local min+max
+
+    turning_points = xnew[optima_ix].astype(int)
+    
+    plt.plot(xnew, ynew)
+    plt.plot(xnew[optima_ix], ynew[optima_ix], "o", label="min")
+    plt.title('Finding turning points (optima) and deriving running fragments')
+    plt.xlabel('Frames')
+    plt.ylabel('X position')
+    
+    pd.DataFrame({key:value for key,value in mean_x_per_person.items() if key in plottable_people}).plot()
+    plt.title('All coordinates that will be used in further analyses')
+    plt.xlabel('Frames')
+    plt.ylabel('X position')
+    
+    turning_points = sorted(set(turning_points)|set([min_period, max_period]))
+    
+    running_fragments = [(i,j) for i,j in zip(turning_points, turning_points[1:]) if j-i > 10]
+    
+    return running_fragments
+
 
 def plot_person(plottables, f, ax, connections):
     for person in plottables.keys():
@@ -364,24 +405,20 @@ def plot_person(plottables, f, ax, connections):
 
 
 # Plotting coordinates of joints
-def prepare_data_for_plotting(period_person_division, plottable_people, turning_point):
+def prepare_data_for_plotting(period_person_division, plottable_people, running_fragments):
     coord_list = []
-    for period, period_dictionary in period_person_division.items():
-        for person, coords in period_dictionary.items():
-            if person in plottable_people and period < turning_point:
-                coord_dict = {key: value for key, value in dict(enumerate(coords[:, :2])).items() if 0 not in value}
-                coord_list.append(coord_dict)
-                break
+    for n, running_fragment in enumerate(running_fragments):
+        coord_list.append([])
+        for period, period_dictionary in period_person_division.items():
+            for person, coords in period_dictionary.items():
+                if person in plottable_people and period >= running_fragment[0] and period < running_fragment[1]:
+                    coord_dict = {key: value for key, value in dict(enumerate(coords[:, :2])).items() if 0 not in value}
+                    coord_list[n].append(coord_dict)
+                    break
 
     return coord_list
 
-
-# In[ ]:
-
-
-# *To dataframe*
-
-# In[ ]:
+# To dataframe
 
 def get_dataframe_from_coords(coord_list):
     coord_df = pd.DataFrame(coord_list)
@@ -414,7 +451,7 @@ def get_dataframe_from_coords(coord_list):
 
 
 # todo: @collin kan jij nog naar deze functie kijken
-def print_to_plotly(pointlist, coord_df):
+def plotly_scatterplot(pointlist, coord_df):
     points = []
     for i in range(len(pointlist)):
         pointdf = coord_df[(coord_df['Point'] == pointlist[i])]
@@ -439,17 +476,18 @@ def print_to_plotly(pointlist, coord_df):
         yaxis=dict(
             #         rangeslider=dict(),
             #         type='date'
-            range=[-600, -300]
+            # range=[-600, -300]
         )
         #     ylim = (-600, 300)
     )
 
     fig = dict(data=points, layout=layout)
-    py.iplot(fig, filename="Open pose runtracker")
-    # py.offline.iplot(fig, filename = "Open pose runtracker")
-
+    
+    return fig
+    
+def plotly_boxplot(pointlist, coord_df):
     # TODO: @collin Why do we do almost the same thing twice?
-    pointlist = coord_df.Point.value_counts().index.tolist()
+    points = []
     for i in range(len(pointlist)):
         pointdf = coord_df[(coord_df['Point'] == pointlist[i])]
         trace = go.Box(
@@ -472,11 +510,11 @@ def print_to_plotly(pointlist, coord_df):
         yaxis=dict(
             #         rangeslider=dict(),
             #         type='date'
-            range=[-600, -300]
+            # range=[-600, -300]
         )
         #     ylim = (-600, 300)
     )
 
     fig = dict(data=points, layout=layout)
-    py.iplot(fig, filename="Open pose runtracker boxplot")
-# py.offline.iplot(fig, filename = "Open pose runtracker")
+    
+    return fig
