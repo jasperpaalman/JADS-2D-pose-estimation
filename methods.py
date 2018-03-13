@@ -113,7 +113,7 @@ def identify_people_over_multiple_frames(empty_joints, fps, period, period_perso
 
         max_frame_diff = int(
             fps // 4)  # number of frames to look back, set to 0.25 sec rather than number of frames
-        
+
         if period < max_frame_diff:
             j = period
         else:
@@ -263,10 +263,10 @@ def get_mean_x_per_person(person_period_division):
 # of the number of frames included
 def normalize_moved_distance_per_person(mean_x_per_person):
     normalized_moved_distance_per_person = \
-        {person:pd.Series(mean_x_dict).diff().abs().sum()/(np.diff(pd.Series(mean_x_dict).index).mean()*len(mean_x_dict)) 
+        {person:pd.Series(mean_x_dict).diff().abs().sum()/(np.diff(pd.Series(mean_x_dict).index).mean()*len(mean_x_dict))
          for person, mean_x_dict in mean_x_per_person.items()}
-    
-    return {key:value for key,value in normalized_moved_distance_per_person.items() if 
+
+    return {key:value for key,value in normalized_moved_distance_per_person.items() if
                                        value == value}
 
 
@@ -279,15 +279,13 @@ def get_person_plottables_df(mean_x_per_person, moving_people):
 
 
 def get_dbscan_subsets(maximum_normalized_distance, person_plottables_df):
-    db = DBSCAN(eps=maximum_normalized_distance * 2, min_samples=1)
+    db = DBSCAN(eps=maximum_normalized_distance*2, min_samples=1)
 
     db.fit(person_plottables_df[['Period', 'X mean']])
 
     person_plottables_df['labels'] = db.labels_
 
     maximum_label = person_plottables_df.groupby('labels').apply(len).sort_values(ascending=False).index[0]
-
-    # In[ ]:
 
     DBSCAN_subsets = person_plottables_df.groupby('labels')['Person'].unique().tolist()
 
@@ -304,27 +302,32 @@ def get_links(moving_people, mean_x_per_moving_person):
         z = np.polyfit(x, y, 1)
         f = np.poly1d(z)
 
-        if n > 0:
-            previous_person = moving_people[n - 1]
+        i = 2 # how many periods back and forth to compare
 
-            previous_x = mean_x_per_moving_person[previous_person][:, 0]
-            previous_y = mean_x_per_moving_person[previous_person][:, 1]
+        if n < i:
+            i = n
 
-            previous_rmse = rmse(f(previous_x), previous_y)
+        for j in range(1, i+1):
+            if n > 0:
+                previous_person = moving_people[n - j]
 
-            links.append((previous_person, person, previous_rmse))
+                previous_x = mean_x_per_moving_person[previous_person][:, 0]
+                previous_y = mean_x_per_moving_person[previous_person][:, 1]
 
-        if n < len(moving_people) - 1:
-            next_person = moving_people[n + 1]
+                previous_rmse = rmse(f(previous_x), previous_y)
 
-            next_x = mean_x_per_moving_person[next_person][:, 0]
-            next_y = mean_x_per_moving_person[next_person][:, 1]
+                links.append((previous_person, person, previous_rmse))
 
-            next_rmse = rmse(f(next_x), next_y)
+            if n < len(moving_people) - j:
+                next_person = moving_people[n + j]
 
-            links.append((person, next_person, next_rmse))
-        return links
+                next_x = mean_x_per_moving_person[next_person][:, 0]
+                next_y = mean_x_per_moving_person[next_person][:, 1]
 
+                next_rmse = rmse(f(next_x), next_y)
+
+                links.append((person, next_person, next_rmse))
+    return links
 
 # Averaging RMSE between links
 def get_linked_people(maximum_normalized_distance, links):
@@ -337,40 +340,51 @@ def get_linked_people(maximum_normalized_distance, links):
     return [list(i) for i in linked_people]
 
 def get_running_fragments(plottable_people, mean_x_per_person, person_plottables_df):
+    '''Given the identified plottable people (running person/person under observation), this function returns the
+    divided running fragments. That is, each running fragment is a person running from one side to the other.'''
+
+    # Retrieve dataframe, but only select plottable people
     plottable_people_df = person_plottables_df[person_plottables_df['Person'].isin(plottable_people)].sort_values('Period')
-    plottable_people_df = plottable_people_df.groupby('Period')['X mean'].apply(np.mean).reset_index()
-    
+
     x = plottable_people_df['Period'].values
     y = plottable_people_df['X mean'].values
-    
+
     min_period = plottable_people_df['Period'].min()
     max_period = plottable_people_df['Period'].max()
-    
-    z = np.polyfit(x, y, 50)
+
+    # fit polynomial with sufficient degree to the datapoints
+    z = np.polyfit(x, y, 10)
     f = np.poly1d(z)
 
+    # Construct new smooth line using the polynomial function
     xnew = np.linspace(min_period, max_period, num=len(x)*10, endpoint=True)
     ynew = f(xnew)
 
+    # Determine optima indexes for xnew and ynew
     optima_ix = np.diff(np.sign(np.diff(ynew))).nonzero()[0] + 1 # local min+max
 
+    # The optima reflect the turning points, which can be retrieved in terms of frames
     turning_points = xnew[optima_ix].astype(int)
-    
+
     plt.plot(xnew, ynew)
     plt.plot(xnew[optima_ix], ynew[optima_ix], "o", label="min")
     plt.title('Finding turning points (optima) and deriving running fragments')
     plt.xlabel('Frames')
     plt.ylabel('X position')
-    
+
     pd.DataFrame({key:value for key,value in mean_x_per_person.items() if key in plottable_people}).plot()
     plt.title('All coordinates that will be used in further analyses')
     plt.xlabel('Frames')
     plt.ylabel('X position')
-    
+
+    # Add minimum and maximum period/frame of the interval we look at
     turning_points = sorted(set(turning_points)|set([min_period, max_period]))
-    
+
+    # Derive running fragments by only taking fragments for which the start and end frame are a minimum of 10 frames apart
     running_fragments = [(i,j) for i,j in zip(turning_points, turning_points[1:]) if j-i > 10]
-    
+
+    # We should somehow include a general cut-off around the turning points, to remove the noise of a person turning
+
     return running_fragments
 
 
@@ -482,9 +496,9 @@ def plotly_scatterplot(pointlist, coord_df):
     )
 
     fig = dict(data=points, layout=layout)
-    
+
     return fig
-    
+
 def plotly_boxplot(pointlist, coord_df):
     # TODO: @collin Why do we do almost the same thing twice?
     points = []
@@ -516,5 +530,5 @@ def plotly_boxplot(pointlist, coord_df):
     )
 
     fig = dict(data=points, layout=layout)
-    
+
     return fig
