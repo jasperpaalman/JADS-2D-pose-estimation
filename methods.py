@@ -279,7 +279,7 @@ def get_person_plottables_df(mean_x_per_person, moving_people):
 
 
 def get_dbscan_subsets(maximum_normalized_distance, person_plottables_df):
-    db = DBSCAN(eps=maximum_normalized_distance*2, min_samples=1)
+    db = DBSCAN(eps=maximum_normalized_distance, min_samples=1)
 
     db.fit(person_plottables_df[['Period', 'X mean']])
 
@@ -338,6 +338,67 @@ def get_linked_people(maximum_normalized_distance, links):
 
     # Setting in right format
     return [list(i) for i in linked_people]
+
+def iterative_main_traject_finder(person_plottables_df, plottable_people, period, x, y, max_rmse):
+    '''Given a period that needs to be tested and some x,y coordinate set to extrapolate from, this function tests,
+    based on the maximum RMSE, if the point(s) within this period are comparable with the current region.
+    The x,y coordinates are returned as well as the updated plottable people set.'''
+
+    best_point = None
+
+    z = np.polyfit(x, y, 10) # fit polynomial with sufficient degree to the datapoints
+    f = np.poly1d(z)
+
+    # retrieve values that belong to this period (can contain more than one point, when noise is present)
+    period_selection = person_plottables_df[person_plottables_df['Period'] == period][['Period', 'Person', 'X mean']].values
+
+    # for each of these points check the RMSE
+    for period, person, x_mean in period_selection:
+        rmse_period = rmse([f(period)], [x_mean])
+        if rmse_period < max_rmse:
+            max_rmse = rmse_period
+            best_point = (period, x_mean, person)
+
+    if best_point != None:
+        x.append(best_point[0])
+        y.append(best_point[1])
+        plottable_people = plottable_people|set([int(best_point[2])])
+
+    return x, y, plottable_people
+
+def determine_plottable_people(person_plottables_df, max_dbscan_subset, max_rmse):
+    '''This function takes the largest DBSCAN subset as a starting point and starts expanding to periods that are not
+    yet covered. For each period not covered yet, the points that are already included are used to create a polynomial
+    function to extrapolate from. The points contained within the period are compared and one or zero points can be chosen
+    to be included in the main traject/region, which depends on the maximum RMSE that is set. If rmse of no point for a period
+    lies below the maximum RMSE, no point is included and we move over to the next period in line. The periods lower than
+    the initially covered region by DBSCAN is indicated as the lower_periods, the periods higher as the upper_periods.'''
+
+    plottable_people = set(max_dbscan_subset) # set-up plottable people set
+
+    # Make a selection of the dataframe that is contained within the current initial region
+    df_sel = person_plottables_df[person_plottables_df['Person'].isin(max_dbscan_subset)].sort_values('Period')
+
+    x = df_sel['Period'].tolist() # starting x list
+    y = df_sel['X mean'].tolist() # starting y list
+
+    # Region lower and upper bound
+    region_lower_bound = person_plottables_df[person_plottables_df['Person'] == min(max_dbscan_subset)]['Period'].min()
+    region_upper_bound = person_plottables_df[person_plottables_df['Person'] == max(max_dbscan_subset)]['Period'].max()
+
+    # Determine lower and upper periods to cover
+    lower_periods = set(range(person_plottables_df['Period'].min(), region_lower_bound)) & set(person_plottables_df['Period'])
+    upper_periods = set(range(region_upper_bound+1, person_plottables_df['Period'].max())) & set(person_plottables_df['Period'])
+
+    for period in upper_periods:
+        x, y, plottable_people = \
+        iterative_main_traject_finder(person_plottables_df, plottable_people, period, x, y, max_rmse)
+
+    for period in list(lower_periods)[::-1]:
+        x, y, plottable_people = \
+        iterative_main_traject_finder(person_plottables_df, plottable_people, period, x, y, max_rmse)
+
+    return plottable_people
 
 def get_running_fragments(plottable_people, mean_x_per_person, person_plottables_df):
     '''Given the identified plottable people (running person/person under observation), this function returns the
