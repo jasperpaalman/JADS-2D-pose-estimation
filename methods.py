@@ -5,7 +5,7 @@ import os
 import plotly.plotly as py
 import plotly.graph_objs as go
 import pandas as pd
-import cv2
+#import cv2
 from sklearn.cluster import DBSCAN
 
 # pip install .whl file from https://www.lfd.uci.edu/~gohlke/pythonlibs/#opencv
@@ -91,6 +91,7 @@ def join_lists_on_mutual_elements(plottable_subsets):
 def identify_people_over_multiple_frames(empty_joints, fps, period, period_person_division, person_coords, next_person):
     """
 
+    :param next_person:
     :param empty_joints:
     :param fps:
     :param period:
@@ -143,6 +144,7 @@ def identify_people_over_multiple_frames(empty_joints, fps, period, period_perso
 
 
 # Getting plottable information per file
+# Getting plottable information per file
 def get_plottables_per_file_and_period_person_division(people_per_file, fps, connections):
     """"
     Troep code die we nog ff niet begrijpen maar het werkt haleluja
@@ -182,7 +184,8 @@ def get_plottables_per_file_and_period_person_division(people_per_file, fps, con
             # Identifying people over disjoint frames ###
 
             period_person_division, next_person = identify_people_over_multiple_frames(empty_joints, fps, period,
-                                                                          period_person_division, person_coords, next_person)
+                                                                                       period_person_division, person_coords,
+                                                                                       next_person)
 
         # For plotting the entire video ###
 
@@ -263,11 +266,11 @@ def get_mean_x_per_person(person_period_division):
 # of the number of frames included
 def normalize_moved_distance_per_person(mean_x_per_person):
     normalized_moved_distance_per_person = \
-        {person:pd.Series(mean_x_dict).diff().abs().sum()/(np.diff(pd.Series(mean_x_dict).index).mean()*len(mean_x_dict))
+        {person: pd.Series(mean_x_dict).diff().abs().sum() / (np.diff(pd.Series(mean_x_dict).index).mean() * len(mean_x_dict))
          for person, mean_x_dict in mean_x_per_person.items()}
 
-    return {key:value for key,value in normalized_moved_distance_per_person.items() if
-                                       value == value}
+    return {key: value for key, value in normalized_moved_distance_per_person.items() if
+            value == value}
 
 
 # Finding person under observation based on clustering with DBSCAN
@@ -302,12 +305,12 @@ def get_links(moving_people, mean_x_per_moving_person):
         z = np.polyfit(x, y, 1)
         f = np.poly1d(z)
 
-        i = 2 # how many periods back and forth to compare
+        i = 2  # how many periods back and forth to compare
 
         if n < i:
             i = n
 
-        for j in range(1, i+1):
+        for j in range(1, i + 1):
             if n > 0:
                 previous_person = moving_people[n - j]
 
@@ -329,6 +332,7 @@ def get_links(moving_people, mean_x_per_moving_person):
                 links.append((person, next_person, next_rmse))
     return links
 
+
 # Averaging RMSE between links
 def get_linked_people(maximum_normalized_distance, links):
     link_rmse = np.array(
@@ -339,14 +343,19 @@ def get_linked_people(maximum_normalized_distance, links):
     # Setting in right format
     return [list(i) for i in linked_people]
 
+
 def iterative_main_traject_finder(person_plottables_df, plottable_people, period, x, y, max_rmse):
-    '''Given a period that needs to be tested and some x,y coordinate set to extrapolate from, this function tests,
+    """Given a period that needs to be tested and some x,y coordinate set to extrapolate from, this function tests,
     based on the maximum RMSE, if the point(s) within this period are comparable with the current region.
-    The x,y coordinates are returned as well as the updated plottable people set.'''
+    The x,y coordinates are returned as well as the updated plottable people set.
+
+
+
+    """
 
     best_point = None
 
-    z = np.polyfit(x, y, 10) # fit polynomial with sufficient degree to the datapoints
+    z = np.polyfit(x, y, 10)  # fit polynomial with sufficient degree to the datapoints
     f = np.poly1d(z)
 
     # retrieve values that belong to this period (can contain more than one point, when noise is present)
@@ -362,25 +371,26 @@ def iterative_main_traject_finder(person_plottables_df, plottable_people, period
     if best_point != None:
         x.append(best_point[0])
         y.append(best_point[1])
-        plottable_people = plottable_people|set([int(best_point[2])])
+        plottable_people = plottable_people | set([int(best_point[2])])
 
     return x, y, plottable_people
 
+
 def determine_plottable_people(person_plottables_df, max_dbscan_subset, max_rmse):
-    '''This function takes the largest DBSCAN subset as a starting point and starts expanding to periods that are not
+    """This function takes the largest DBSCAN subset as a starting point and starts expanding to periods that are not
     yet covered. For each period not covered yet, the points that are already included are used to create a polynomial
     function to extrapolate from. The points contained within the period are compared and one or zero points can be chosen
     to be included in the main traject/region, which depends on the maximum RMSE that is set. If rmse of no point for a period
     lies below the maximum RMSE, no point is included and we move over to the next period in line. The periods lower than
-    the initially covered region by DBSCAN is indicated as the lower_periods, the periods higher as the upper_periods.'''
+    the initially covered region by DBSCAN is indicated as the lower_periods, the periods higher as the upper_periods."""
 
-    plottable_people = set(max_dbscan_subset) # set-up plottable people set
+    plottable_people = set(max_dbscan_subset)  # set-up plottable people set
 
     # Make a selection of the dataframe that is contained within the current initial region
     df_sel = person_plottables_df[person_plottables_df['Person'].isin(max_dbscan_subset)].sort_values('Period')
 
-    x = df_sel['Period'].tolist() # starting x list
-    y = df_sel['X mean'].tolist() # starting y list
+    x = df_sel['Period'].tolist()  # starting x list
+    y = df_sel['X mean'].tolist()  # starting y list
 
     # Region lower and upper bound
     region_lower_bound = person_plottables_df[person_plottables_df['Person'] == min(max_dbscan_subset)]['Period'].min()
@@ -388,22 +398,31 @@ def determine_plottable_people(person_plottables_df, max_dbscan_subset, max_rmse
 
     # Determine lower and upper periods to cover
     lower_periods = set(range(person_plottables_df['Period'].min(), region_lower_bound)) & set(person_plottables_df['Period'])
-    upper_periods = set(range(region_upper_bound+1, person_plottables_df['Period'].max())) & set(person_plottables_df['Period'])
+    upper_periods = set(range(region_upper_bound + 1, person_plottables_df['Period'].max())) & set(person_plottables_df['Period'])
 
     for period in upper_periods:
         x, y, plottable_people = \
-        iterative_main_traject_finder(person_plottables_df, plottable_people, period, x, y, max_rmse)
+            iterative_main_traject_finder(person_plottables_df, plottable_people, period, x, y, max_rmse)
 
     for period in list(lower_periods)[::-1]:
         x, y, plottable_people = \
-        iterative_main_traject_finder(person_plottables_df, plottable_people, period, x, y, max_rmse)
+            iterative_main_traject_finder(person_plottables_df, plottable_people, period, x, y, max_rmse)
 
     return plottable_people
 
-def get_running_fragments(plottable_people, mean_x_per_person, person_plottables_df):
-    '''Given the identified plottable people (running person/person under observation), this function returns the
-    divided running fragments. That is, each running fragment is a person running from one side to the other.'''
 
+def get_running_fragments(plottable_people, mean_x_per_person, person_plottables_df):
+    """
+    Given the identified plottable people (running person/person under observation),
+    this function returns the divided running fragments. That is, each running fragment is a
+    person running from one side to the other.
+
+    :param plottable_people:
+    :param mean_x_per_person:
+    :param person_plottables_df:
+
+    :return :
+    """
     # Retrieve dataframe, but only select plottable people
     plottable_people_df = person_plottables_df[person_plottables_df['Person'].isin(plottable_people)].sort_values('Period')
 
@@ -418,11 +437,11 @@ def get_running_fragments(plottable_people, mean_x_per_person, person_plottables
     f = np.poly1d(z)
 
     # Construct new smooth line using the polynomial function
-    xnew = np.linspace(min_period, max_period, num=len(x)*10, endpoint=True)
+    xnew = np.linspace(min_period, max_period, num=len(x) * 10, endpoint=True)
     ynew = f(xnew)
 
     # Determine optima indexes for xnew and ynew
-    optima_ix = np.diff(np.sign(np.diff(ynew))).nonzero()[0] + 1 # local min+max
+    optima_ix = np.diff(np.sign(np.diff(ynew))).nonzero()[0] + 1  # local min+max
 
     # The optima reflect the turning points, which can be retrieved in terms of frames
     turning_points = xnew[optima_ix].astype(int)
@@ -433,16 +452,16 @@ def get_running_fragments(plottable_people, mean_x_per_person, person_plottables
     plt.xlabel('Frames')
     plt.ylabel('X position')
 
-    pd.DataFrame({key:value for key,value in mean_x_per_person.items() if key in plottable_people}).plot()
+    pd.DataFrame({key: value for key, value in mean_x_per_person.items() if key in plottable_people}).plot()
     plt.title('All coordinates that will be used in further analyses')
     plt.xlabel('Frames')
     plt.ylabel('X position')
 
     # Add minimum and maximum period/frame of the interval we look at
-    turning_points = sorted(set(turning_points)|set([min_period, max_period]))
+    turning_points = sorted(set(turning_points) | set([min_period, max_period]))
 
     # Derive running fragments by only taking fragments for which the start and end frame are a minimum of 10 frames apart
-    running_fragments = [(i,j) for i,j in zip(turning_points, turning_points[1:]) if j-i > 10]
+    running_fragments = [(i, j) for i, j in zip(turning_points, turning_points[1:]) if j - i > 10]
 
     # We should somehow include a general cut-off around the turning points, to remove the noise of a person turning
 
@@ -481,27 +500,41 @@ def plot_person(plottables, f, ax, connections):
 
 # Plotting coordinates of joints
 def prepare_data_for_plotting(period_person_division, plottable_people, running_fragments):
+    """"
+
+    :param period_person_division:
+    :param plottable_people:
+    :param running_fragments:
+
+    :return coord_list:
+    """
     coord_list = []
     for n, running_fragment in enumerate(running_fragments):
         coord_list.append([])
         for period, period_dictionary in period_person_division.items():
             for person, coords in period_dictionary.items():
-                if person in plottable_people and period >= running_fragment[0] and period < running_fragment[1]:
+                if person in plottable_people and running_fragment[0] <= period < running_fragment[1]:
                     coord_dict = {key: value for key, value in dict(enumerate(coords[:, :2])).items() if 0 not in value}
                     coord_list[n].append(coord_dict)
                     break
 
     return coord_list
 
+
 # To dataframe
 
 def get_dataframe_from_coords(coord_list):
-    coord_df = pd.DataFrame(coord_list)
+    """"
+    Get a list of coordinates and turns this into a DataFrame to be used for analysis
+    :param coord_list: List of List of dictionaries containing coordinates the run both ways.
+    :return coord_df: A DataFrame containing all x and y coordinates of the runner during the run.
+    """
+    coord_df = pd.DataFrame(coord_list[0]).append(pd.DataFrame(coord_list[1]), ignore_index=True)
 
     coord_df.columns = ['Nose', 'Neck', 'Right Shoulder', 'Right Elbow', 'Right Hand',
-                        'Left Shoulder', 'Left Elbow', 'Left Hand',
-                        'Right Hip', 'Right Knee', 'Right Foot', 'Left Hip', 'Left Knee', 'Left Foot',
-                        'Right Eye', 'Left Eye', 'Right Ear', 'Left Ear']
+                        'Left Shoulder', 'Left Elbow', 'Left Hand', 'Right Hip',
+                        'Right Knee', 'Right Foot', 'Left Hip', 'Left Knee',
+                        'Left Foot', 'Right Eye', 'Left Eye', 'Right Ear', 'Left Ear']
 
     # add the frame number
     coord_df['Frame'] = coord_df.index
@@ -525,6 +558,32 @@ def get_dataframe_from_coords(coord_list):
     return coord_df
 
 
+def to_feature_df(coord_df):
+    """
+    Gets a DataFrame of coordinates and turns this into features.
+    In this case, the standard deviation of movement both horizontally as well as vertically
+
+    :param coord_df: A dataframe containing all relevant coördiantes observed in the video.
+
+    :return std_df: returns a dataframe containing standard deviations of all observed coordinates
+    """
+    coord_df['video'] = 1  # needs to be used as itterator in later version for multiple video's
+
+    x_df = coord_df.pivot_table(index='video', columns='Point', values='x', aggfunc=np.std)
+    y_df = coord_df.pivot_table(index='video', columns='Point', values='y', aggfunc=np.std)
+
+    x_df.columns = [str(col) + '_x' for col in x_df.columns]
+    y_df.columns = [str(col) + '_y' for col in y_df.columns]
+
+    x_df['video'] = x_df.index
+    y_df['video'] = y_df.index
+
+    std_df = pd.merge(x_df, y_df, on='video', how='outer')
+    return std_df
+    # return y_df
+
+
+# Plotly functions to make coördinates more insightfull
 # todo: @collin kan jij nog naar deze functie kijken
 def plotly_scatterplot(pointlist, coord_df):
     points = []
@@ -559,6 +618,7 @@ def plotly_scatterplot(pointlist, coord_df):
     fig = dict(data=points, layout=layout)
 
     return fig
+
 
 def plotly_boxplot(pointlist, coord_df):
     # TODO: @collin Why do we do almost the same thing twice?
