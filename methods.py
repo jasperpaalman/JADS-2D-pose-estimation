@@ -18,6 +18,12 @@ from sklearn.metrics import mean_squared_error
 from sklearn.metrics.pairwise import pairwise_distances
 from math import sqrt
 
+connections = [
+	(1, 2), (1, 5), (2, 3), (3, 4), (5, 6), (6, 7), (1, 8),
+    (8, 9), (9, 10), (1, 11), (11, 12), (12, 13), (1, 0),
+	(0, 14), (14, 16),(0, 15), (15, 17), (2, 16), (5, 17)
+]
+
 
 def get_openpose_output(location):
     """
@@ -94,7 +100,7 @@ def amount_of_frames_to_look_back(fps, frame):
     """
     Function that returns the amoount of frames that need be examined.
 
-    :param fps: number of frames per second in currenct video
+    :param fps: number of frames per second in current video
     :param frame: current frame in loop
     :return J: Number of frames to be examined
     """
@@ -106,9 +112,17 @@ def amount_of_frames_to_look_back(fps, frame):
         j = max_frame_diff
     return j
 
+
 def get_period_person_division(people_per_file, fps):
     """"
-    Troep code die we nog ff niet begrijpen maar het werkt haleluja
+
+
+    :param fps: number of frames per second in current video
+    :param people_per_file: List of List of dictionaries. So a list of frames, each frame consists of a list of dictionaries in which
+    all identified people in the video are described using the coordinates of the observed joints.
+
+    :return period_person_division: data strucure containing per frame all persons and their
+                                   corresponding coordinates
 
     """
     period_person_division = {}  # Dict of dicts
@@ -142,8 +156,8 @@ def get_period_person_division(people_per_file, fps):
                 # for all possible previous periods within max_frame_diff
                 for i in range(1, amount_of_frames_to_look_back(fps, frame) + 1):
                     for earlier_person in period_person_division[frame - i].keys():  # compare with all people
-                        if earlier_person not in period_person_division[
-                            frame].keys():  # if not already contained in current period
+                        if earlier_person not in period_person_division[frame].keys():
+                            # if not already contained in current period
                             earlier_person_coords = period_person_division[frame - i][earlier_person]
                             empty_joints_copy = empty_joints.copy()
                             empty_joints_copy = empty_joints_copy | set(np.where((earlier_person_coords == 0).all(axis=1))[0])
@@ -164,10 +178,12 @@ def get_period_person_division(people_per_file, fps):
     return period_person_division
 
 
-def get_plottables_per_file(people_per_file, connections):
-    """"
-    Troep code die we nog ff niet begrijpen maar het werkt haleluja
+def get_plottables_per_file(people_per_file):
+    """
 
+    :param people_per_file: List of List of dictionaries. So a list of frames, each frame consists of a list of dictionaries in which
+    all identified people in the video are described using the coordinates of the observed joints.
+    :return plottables_per_file:
     """
     plottables_per_file = []  # used for plotting all the coordinates and connected body part lines
 
@@ -218,11 +234,6 @@ def get_plottables_per_file(people_per_file, connections):
     return plottables_per_file
 
 
-
-
-
-
-
 def plot_fit(plottables_per_file, period, f, ax, image_w, image_h):
     """
 
@@ -253,6 +264,13 @@ def plot_fit(plottables_per_file, period, f, ax, image_w, image_h):
 # Basically change the layout of the dictionary
 # Now you first index based on the person and then you index based on the period
 def get_person_period_division(period_person_division):
+    """
+    Function that reverses the indexing in the dictionary
+    :param period_person_division: data strucure containing per frame all persons and their
+                                   corresponding coordinates
+    :return person_period_division: data structure containing per person all frames and the coordinates
+                                    of that person in that frame.
+    """
     person_period_division = {}
     for person in set(chain.from_iterable(period_person_division.values())):
         person_period_division[person] = {}
@@ -265,6 +283,11 @@ def get_person_period_division(period_person_division):
 
 # Calculate the mean x-position of a person in a certain period
 def get_mean_x_per_person(person_period_division):
+    """
+
+    :param person_period_division:
+    :returns: a dictionary
+    """
     return {person: {period: np.mean(coords[~(coords == 0).any(axis=1), 0])
                      for period, coords in time_coord_dict.items()}
             for person, time_coord_dict in person_period_division.items()}
@@ -274,6 +297,11 @@ def get_mean_x_per_person(person_period_division):
 # Normalize moved distance per identified person over frames by including the average frame difference and the length
 # of the number of frames included
 def normalize_moved_distance_per_person(mean_x_per_person):
+    """
+
+    :param mean_x_per_person:
+    :return:
+    """
     normalized_moved_distance_per_person = \
         {person: pd.Series(mean_x_dict).diff().abs().sum() / (np.diff(pd.Series(mean_x_dict).index).mean() * len(mean_x_dict))
          for person, mean_x_dict in mean_x_per_person.items()}
@@ -285,12 +313,24 @@ def normalize_moved_distance_per_person(mean_x_per_person):
 # Finding person under observation based on clustering with DBSCAN
 
 def get_person_plottables_df(mean_x_per_person, moving_people):
+    """
+
+    :param mean_x_per_person:
+    :param moving_people:
+    :return:
+    """
     return pd.DataFrame(
         [(period, person, x) for person, period_dict in mean_x_per_person.items() if person in moving_people
          for period, x in period_dict.items()], columns=['Period', 'Person', 'X mean'])
 
 
 def get_dbscan_subsets(maximum_normalized_distance, person_plottables_df):
+    """
+
+    :param maximum_normalized_distance:
+    :param person_plottables_df:
+    :return:
+    """
     db = DBSCAN(eps=maximum_normalized_distance, min_samples=1)
 
     db.fit(person_plottables_df[['Period', 'X mean']])
@@ -310,8 +350,13 @@ def iterative_main_traject_finder(person_plottables_df, plottable_people, period
     based on the maximum RMSE, if the point(s) within this period are comparable with the current region.
     The x,y coordinates are returned as well as the updated plottable people set.
 
-
-
+    :param person_plottables_df:
+    :param plottable_people:
+    :param period:
+    :param x:
+    :param y:
+    :param max_rmse:
+    :return:
     """
 
     best_point = None
@@ -442,17 +487,13 @@ def get_running_fragments(plottable_people, mean_x_per_person, person_plottables
     return running_fragments
 
 
-def plot_person(plottables, f, ax, connections):
+def plot_person(plottables, f, ax):
     """
-
-
 
 
     :param ax:
     :param f:
     :param plottables:
-    :param connections:
-
     """
     for person in plottables.keys():
         plot_coords = plottables[person]
@@ -486,7 +527,7 @@ def plot_person(plottables, f, ax, connections):
 # Plotting coordinates of joints
 def prepare_data_for_plotting(period_person_division, plottable_people, running_fragments):
     """"
-    Returns a list of all coordinates of the
+    Returns a list of all coordinates
 
     :param period_person_division:
     :param plottable_people:
@@ -511,6 +552,7 @@ def prepare_data_for_plotting(period_person_division, plottable_people, running_
 def get_dataframe_from_coords(coord_list):
     """"
     Get a list of coordinates and turns this into a DataFrame to be used for analysis
+    
     :param coord_list: List of List of dictionaries containing coordinates the run both ways.
     :return coord_df: A DataFrame containing all x and y coordinates of the runner during the run.
     """
@@ -780,8 +822,7 @@ def identify_people_over_multiple_frames(fps, file, frame, period_person_divisio
     :param empty_joints: List of all joints (identified by their index in the coordinate
     :param fps: number of frames per second in currenct video
     :param frame: current frame in loop
-    :param period_person_division: data strucure containing per frame all persons and their
-                                    corresponding coordinates
+
     :param person_coords: Coordinates identified by openpose for this person in current frame
 
     :return
