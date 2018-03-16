@@ -400,9 +400,23 @@ def determine_plottable_people(person_plottables_df, max_dbscan_subset, max_rmse
 
     return plottable_people
 
-def get_running_fragments(plottable_people, mean_x_per_person, person_plottables_df):
+def get_running_and_turning_fragments(plottable_people, mean_x_per_person, person_plottables_df, moving_people):
     '''Given the identified plottable people (running person/person under observation), this function returns the
-    divided running fragments. That is, each running fragment is a person running from one side to the other.'''
+    divided running and turning fragments. That is, each running fragment is a person running from one side to the other
+    and the turning fragments are the fragments that remain.
+
+    :param plottable_people: The indices of identified 'people' that belong to the running person
+    :param mean_x_per_person: Mean x-position of a person in a certain period (average over all joints)
+    :param person_plottables_df: Dataframe that contains plottable information for all moving people (running person + noise)
+    :param moving_people: All 'people' that have a normalized moved distance that exceeds a set threshold. Contains the running person and possibly noise.
+
+    :returns running_fragments, turning_fragments: Both are a list of tuples. Each tuple indicated the start frame and end frame of a fragment.
+    Running fragments indicate the estimated fragments where the person under observation is running
+    Turning fragments indicate the estimated fragments where the person is either slowing down, turning or starting, i.e. not solely running
+    '''
+
+    # Plot the original dataframe to show the difference between moving_people (incl. noise) and the extract plottable_people
+    pd.DataFrame({key:value for key,value in mean_x_per_person.items() if key in moving_people}).plot()
 
     # Retrieve dataframe, but only select plottable people
     plottable_people_df = person_plottables_df[person_plottables_df['Person'].isin(plottable_people)].sort_values('Period')
@@ -410,8 +424,8 @@ def get_running_fragments(plottable_people, mean_x_per_person, person_plottables
     x = plottable_people_df['Period'].values
     y = plottable_people_df['X mean'].values
 
-    min_period = plottable_people_df['Period'].min()
-    max_period = plottable_people_df['Period'].max()
+    min_period = plottable_people_df['Period'].min() # minimum period/frame
+    max_period = plottable_people_df['Period'].max() # maximum period/frame
 
     # fit polynomial with sufficient degree to the datapoints
     z = np.polyfit(x, y, 10)
@@ -427,27 +441,89 @@ def get_running_fragments(plottable_people, mean_x_per_person, person_plottables
     # The optima reflect the turning points, which can be retrieved in terms of frames
     turning_points = xnew[optima_ix].astype(int)
 
+    # Plot found information
     plt.plot(xnew, ynew)
-    plt.plot(xnew[optima_ix], ynew[optima_ix], "o", label="min")
-    plt.title('Finding turning points (optima) and deriving running fragments')
+    plt.plot(xnew[optima_ix], ynew[optima_ix], "o", color='orange')
+    plt.title('Finding turning points (optima) and deriving fragments')
     plt.xlabel('Frames')
     plt.ylabel('X position')
+    plt.legend().set_visible(False)
 
+    # Plot coordinates that will be used in further analyses + identified slow down points
     pd.DataFrame({key:value for key,value in mean_x_per_person.items() if key in plottable_people}).plot()
-    plt.title('All coordinates that will be used in further analyses')
+    plt.title('All coordinates that will be used in further analyses & \n identified points where a start or a slow-down is finalized')
     plt.xlabel('Frames')
     plt.ylabel('X position')
+    plt.legend().set_visible(False)
 
     # Add minimum and maximum period/frame of the interval we look at
     turning_points = sorted(set(turning_points)|set([min_period, max_period]))
 
-    # Derive running fragments by only taking fragments for which the start and end frame are a minimum of 10 frames apart
-    running_fragments = [(i,j) for i,j in zip(turning_points, turning_points[1:]) if j-i > 10]
+    # Derive fragments by only taking fragments for which the start and end frame are a minimum of 10 frames apart
+    fragments = [(i,j) for i,j in zip(turning_points, turning_points[1:]) if j-i > 10]
 
-    # We should somehow include a general cut-off around the turning points, to remove the noise of a person turning
+    ### Splitting turning and running motions ###
 
-    return running_fragments
+    plottable_people_df.set_index('Period')
 
+    turning_frames = []
+
+    # Individually look at each fragment (this contains parts that are a running motion and parts that are a turning/starting motion)
+    # Rationale: Check for maximum change in accelertion by taking minimum/maximum of second derivative
+
+    for fragment in fragments:
+        # mask for selecting the coordinates of each fragment
+        mask = (xnew >= fragment[0]) & (xnew < fragment[1])
+
+        # selection of frames (x_sel) and x-position (y_sel)
+        x_sel = xnew[mask]
+        y_sel = ynew[mask]
+
+        # turn into series
+        fragment_series = pd.Series(y_sel, index=x_sel)
+
+        periods = fragment_series.index.tolist()
+
+        # check for points where a start or a slow-down is finalized in the upper and lower regions
+        # define these regions by first setting lower and upper bounds
+        lower_bound = periods[len(periods)//3]
+        upper_bound = periods[(len(periods)//3)*2]
+
+        # getting fragment lower selection
+        fragment_lower_sel = fragment_series[fragment_series.index <= lower_bound]
+        secondDerivative = fragment_lower_sel.diff().diff()
+
+        # check if line is upward sloping or downward sloping
+        if y_sel[0] < y_sel[-1]:
+            turning_frames.append(secondDerivative.argmin())
+        else:
+            turning_frames.append(secondDerivative.argmax())
+
+        # getting fragment upper selection
+        fragment_upper_sel = fragment_series[fragment_series.index >= upper_bound]
+        secondDerivative = fragment_upper_sel.diff().diff()
+
+        # check if line is upward sloping or downward sloping
+        if y_sel[0] < y_sel[-1]:
+            turning_frames.append(secondDerivative.argmax())
+        else:
+            turning_frames.append(secondDerivative.argmin())
+
+    # get the estimated x-position where a start or a slow-down is finalized (just for plotting purposes)
+    z = np.polyfit(x, y, 10); f = np.poly1d(z)
+    turning_x = f(turning_frames)
+
+    # Adding points to plot where a start or a slow-down is finalized (just for plotting purposes)
+    plt.scatter(turning_frames, turning_x)
+
+    all_points = sorted(set(turning_frames)|set([min_period, max_period]))
+    all_fragments = list(zip(all_points, all_points[1:]))
+
+    # Splitting running fragments and turning fragments
+    running_fragments = all_fragments[1::2]
+    turning_fragments = all_fragments[::2]
+
+    return running_fragments, turning_fragments
 
 def plot_person(plottables, f, ax, connections):
     for person in plottables.keys():
@@ -477,7 +553,6 @@ def plot_person(plottables, f, ax, connections):
 
     f.canvas.draw()
     ax.clear()
-
 
 # Plotting coordinates of joints
 def prepare_data_for_plotting(period_person_division, plottable_people, running_fragments):
