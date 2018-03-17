@@ -5,7 +5,7 @@ import os
 # import plotly.plotly as py
 import plotly.graph_objs as go
 import pandas as pd
-#import cv2
+import cv2
 from sklearn.cluster import DBSCAN
 
 # pip install .whl file from https://www.lfd.uci.edu/~gohlke/pythonlibs/#opencv
@@ -554,41 +554,58 @@ def get_running_and_turning_fragments(plottable_people, mean_x_per_person, perso
 
     return running_fragments, turning_fragments
 
-def plot_person(plottables, f, ax):
+def plot_person(plottables, f, ax, image_h, image_w, zoom=True, pad=3):
     """
-
-
     :param ax:
     :param f:
     :param plottables:
     """
-    for person in plottables.keys():
-        plot_coords = plottables[person]
 
-        coord_dict = {key: value for key, value in dict(enumerate(plot_coords[:, :2])).items() if 0 not in value}
+    y_coords = [coords[~(coords== 0).any(axis=1)][:, 1]
+            for period_dictionary in plottables for coords in period_dictionary.values()]
 
-        present_keypoints = set(coord_dict.keys())
+    y_coords = list(chain.from_iterable(y_coords))
 
-        present_connections = [connection for connection in connections if
-                               len(present_keypoints & set(connection)) == 2]
+    cy = np.mean(y_coords) # y center
+    stdy = np.std(y_coords) # y standard deviation
 
-        plot_lines = [np.transpose([coord_dict[a], coord_dict[b]]) for a, b in present_connections]
+    ydiff = stdy*pad*2 # total range of y
 
-        plot_coords = plot_coords[~(plot_coords == 0).any(axis=1)]
+    aspect = image_w/image_h
 
-        plt.scatter(x=plot_coords[:, 0], y=plot_coords[:, 1])
+    for t in range(len(plottables)):
 
-        for x, y in plot_lines:
-            plt.plot(x, y)
+        for person in plottables[t].keys():
+            plot_coords = plottables[t][person]
 
-    ax.set_xlim([plot_coords[:, 0].min() - 100, plot_coords[:, 0].max() + 100])
-    ax.set_ylim([plot_coords[:, 1].min() - 100, plot_coords[:, 1].max() + 100])
+            coord_dict = {key: value for key, value in dict(enumerate(plot_coords[:, :2])).items() if 0 not in value}
 
-    #     ax.set_xlim([0, image_w])
-    #     ax.set_ylim([-image_h, 0])
+            present_keypoints = set(coord_dict.keys())
 
-    f.canvas.draw()
-    ax.clear()
+            present_connections = [connection for connection in connections if
+                                   len(present_keypoints & set(connection)) == 2]
+
+            plot_lines = [np.transpose([coord_dict[a], coord_dict[b]]) for a, b in present_connections]
+
+            plot_coords = plot_coords[~(plot_coords == 0).any(axis=1)]
+
+            plt.scatter(x=plot_coords[:, 0], y=plot_coords[:, 1])
+
+            for x, y in plot_lines:
+                plt.plot(x, y)
+
+            if zoom:
+                ax.set_ylim(cy-stdy*pad, cy+stdy*pad) # set y-limits by padding around the average center of y
+                xlow, xhigh = ax.get_xlim() # get x higher and lower limits
+                xdiff = xhigh-xlow # calculate the total range of x
+                xpad = ((ydiff*aspect)-xdiff)/2 # calculate how much the xlimits should be padded on either side to set aspect ratio correctly
+                ax.set_xlim(xlow-xpad, xhigh+xpad) # set new limits
+            else:
+                ax.set_xlim([0, image_w])
+                ax.set_ylim([-image_h, 0])
+
+            f.canvas.draw()
+            ax.clear()
 
 # Plotting coordinates of joints
 def prepare_data_for_plotting(period_person_division, plottable_people, running_fragments):
