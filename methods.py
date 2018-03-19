@@ -5,7 +5,7 @@ import os
 import plotly.plotly as py
 import plotly.graph_objs as go
 import pandas as pd
-#import cv2
+import cv2
 from sklearn.cluster import DBSCAN
 
 # pip install .whl file from https://www.lfd.uci.edu/~gohlke/pythonlibs/#opencv
@@ -410,27 +410,32 @@ def determine_plottable_people(person_plottables_df, max_dbscan_subset, max_rmse
 
     return plottable_people
 
+def get_running_and_turning_fragments(plottable_people, mean_x_per_person, person_plottables_df, moving_people):
+    '''Given the identified plottable people (running person/person under observation), this function returns the
+    divided running and turning fragments. That is, each running fragment is a person running from one side to the other
+    and the turning fragments are the fragments that remain.
 
-def get_running_fragments(plottable_people, mean_x_per_person, person_plottables_df):
-    """
-    Given the identified plottable people (running person/person under observation),
-    this function returns the divided running fragments. That is, each running fragment is a
-    person running from one side to the other.
+    :param plottable_people: The indices of identified 'people' that belong to the running person
+    :param mean_x_per_person: Mean x-position of a person in a certain period (average over all joints)
+    :param person_plottables_df: Dataframe that contains plottable information for all moving people (running person + noise)
+    :param moving_people: All 'people' that have a normalized moved distance that exceeds a set threshold. Contains the running person and possibly noise.
 
-    :param plottable_people:
-    :param mean_x_per_person:
-    :param person_plottables_df:
+    :returns running_fragments, turning_fragments: Both are a list of tuples. Each tuple indicated the start frame and end frame of a fragment.
+    Running fragments indicate the estimated fragments where the person under observation is running
+    Turning fragments indicate the estimated fragments where the person is either slowing down, turning or starting, i.e. not solely running
+    '''
 
-    :return :
-    """
+    # Plot the original dataframe to show the difference between moving_people (incl. noise) and the extract plottable_people
+    pd.DataFrame({key:value for key,value in mean_x_per_person.items() if key in moving_people}).plot()
+
     # Retrieve dataframe, but only select plottable people
     plottable_people_df = person_plottables_df[person_plottables_df['Person'].isin(plottable_people)].sort_values('Period')
 
     x = plottable_people_df['Period'].values
     y = plottable_people_df['X mean'].values
 
-    min_period = plottable_people_df['Period'].min()
-    max_period = plottable_people_df['Period'].max()
+    min_period = plottable_people_df['Period'].min() # minimum period/frame
+    max_period = plottable_people_df['Period'].max() # maximum period/frame
 
     # fit polynomial with sufficient degree to the datapoints
     z = np.polyfit(x, y, 10)
@@ -446,57 +451,142 @@ def get_running_fragments(plottable_people, mean_x_per_person, person_plottables
     # The optima reflect the turning points, which can be retrieved in terms of frames
     turning_points = xnew[optima_ix].astype(int)
 
+    # Plot found information
     plt.plot(xnew, ynew)
-    plt.plot(xnew[optima_ix], ynew[optima_ix], "o", label="min")
-    plt.title('Finding turning points (optima) and deriving running fragments')
+    plt.plot(xnew[optima_ix], ynew[optima_ix], "o", color='orange')
+    plt.title('Finding turning points (optima) and deriving fragments')
     plt.xlabel('Frames')
     plt.ylabel('X position')
+    plt.legend().set_visible(False)
 
-    pd.DataFrame({key: value for key, value in mean_x_per_person.items() if key in plottable_people}).plot()
-    plt.title('All coordinates that will be used in further analyses')
+    # Plot coordinates that will be used in further analyses + identified slow down points
+    pd.DataFrame({key:value for key,value in mean_x_per_person.items() if key in plottable_people}).plot()
+    plt.title('All coordinates that will be used in further analyses & \n identified points where a start or a slow-down is finalized')
     plt.xlabel('Frames')
     plt.ylabel('X position')
+    plt.legend().set_visible(False)
 
     # Add minimum and maximum period/frame of the interval we look at
     turning_points = sorted(set(turning_points) | set([min_period, max_period]))
 
-    # Derive running fragments by only taking fragments for which the start and end frame are a minimum of 10 frames apart
-    running_fragments = [(i, j) for i, j in zip(turning_points, turning_points[1:]) if j - i > 10]
+    # Derive fragments by only taking fragments for which the start and end frame are a minimum of 10 frames apart
+    fragments = [(i,j) for i,j in zip(turning_points, turning_points[1:]) if j-i > 10]
 
-    # We should somehow include a general cut-off around the turning points, to remove the noise of a person turning
+    ### Splitting turning and running motions ###
 
-    return running_fragments
+    plottable_people_df.set_index('Period')
 
+    turning_frames = []
 
-def plot_person(plottables, f, ax, connections):
-    for person in plottables.keys():
-        plot_coords = plottables[person]
+    # Individually look at each fragment (this contains parts that are a running motion and parts that are a turning/starting motion)
+    # Rationale: Check for maximum change in accelertion by taking minimum/maximum of second derivative
 
-        coord_dict = {key: value for key, value in dict(enumerate(plot_coords[:, :2])).items() if 0 not in value}
+    for fragment in fragments:
+        # mask for selecting the coordinates of each fragment
+        mask = (xnew >= fragment[0]) & (xnew < fragment[1])
 
-        present_keypoints = set(coord_dict.keys())
+        # selection of frames (x_sel) and x-position (y_sel)
+        x_sel = xnew[mask]
+        y_sel = ynew[mask]
 
-        present_connections = [connection for connection in connections if
-                               len(present_keypoints & set(connection)) == 2]
+        # turn into series
+        fragment_series = pd.Series(y_sel, index=x_sel)
 
-        plot_lines = [np.transpose([coord_dict[a], coord_dict[b]]) for a, b in present_connections]
+        periods = fragment_series.index.tolist()
 
-        plot_coords = plot_coords[~(plot_coords == 0).any(axis=1)]
+        # check for points where a start or a slow-down is finalized in the upper and lower regions
+        # define these regions by first setting lower and upper bounds
+        lower_bound = periods[len(periods)//3]
+        upper_bound = periods[(len(periods)//3)*2]
 
-        plt.scatter(x=plot_coords[:, 0], y=plot_coords[:, 1])
+        # getting fragment lower selection
+        fragment_lower_sel = fragment_series[fragment_series.index <= lower_bound]
+        secondDerivative = fragment_lower_sel.diff().diff()
 
-        for x, y in plot_lines:
-            plt.plot(x, y)
+        # check if line is upward sloping or downward sloping
+        if y_sel[0] < y_sel[-1]:
+            turning_frames.append(secondDerivative.argmin())
+        else:
+            turning_frames.append(secondDerivative.argmax())
 
-    ax.set_xlim([plot_coords[:, 0].min() - 100, plot_coords[:, 0].max() + 100])
-    ax.set_ylim([plot_coords[:, 1].min() - 100, plot_coords[:, 1].max() + 100])
+        # getting fragment upper selection
+        fragment_upper_sel = fragment_series[fragment_series.index >= upper_bound]
+        secondDerivative = fragment_upper_sel.diff().diff()
 
-    #     ax.set_xlim([0, image_w])
-    #     ax.set_ylim([-image_h, 0])
+        # check if line is upward sloping or downward sloping
+        if y_sel[0] < y_sel[-1]:
+            turning_frames.append(secondDerivative.argmax())
+        else:
+            turning_frames.append(secondDerivative.argmin())
 
-    f.canvas.draw()
-    ax.clear()
+    # get the estimated x-position where a start or a slow-down is finalized (just for plotting purposes)
+    z = np.polyfit(x, y, 10); f = np.poly1d(z)
+    turning_x = f(turning_frames)
 
+    # Adding points to plot where a start or a slow-down is finalized (just for plotting purposes)
+    plt.scatter(turning_frames, turning_x)
+
+    all_points = sorted(set(turning_frames)|set([min_period, max_period]))
+    all_fragments = list(zip(all_points, all_points[1:]))
+
+    # Splitting running fragments and turning fragments
+    running_fragments = all_fragments[1::2]
+    turning_fragments = all_fragments[::2]
+
+    return running_fragments, turning_fragments
+
+def plot_person(plottables, f, ax, image_h, image_w, zoom=True, pad=3):
+    """
+    :param ax:
+    :param f:
+    :param plottables:
+    """
+
+    y_coords = [coords[~(coords== 0).any(axis=1)][:, 1]
+            for period_dictionary in plottables for coords in period_dictionary.values()]
+
+    y_coords = list(chain.from_iterable(y_coords))
+
+    cy = np.mean(y_coords) # y center
+    stdy = np.std(y_coords) # y standard deviation
+
+    ydiff = stdy*pad*2 # total range of y
+
+    aspect = image_w/image_h
+
+    for t in range(len(plottables)):
+
+        for person in plottables[t].keys():
+            plot_coords = plottables[t][person]
+
+            coord_dict = {key: value for key, value in dict(enumerate(plot_coords[:, :2])).items() if 0 not in value}
+
+            present_keypoints = set(coord_dict.keys())
+
+            present_connections = [connection for connection in connections if
+                                   len(present_keypoints & set(connection)) == 2]
+
+            plot_lines = [np.transpose([coord_dict[a], coord_dict[b]]) for a, b in present_connections]
+
+            plot_coords = plot_coords[~(plot_coords == 0).any(axis=1)]
+
+            plt.scatter(x=plot_coords[:, 0], y=plot_coords[:, 1])
+
+            for x, y in plot_lines:
+                plt.plot(x, y)
+
+            if zoom:
+                ax.set_ylim(cy-stdy*pad, cy+stdy*pad) # set y-limits by padding around the average center of y
+                xlow, xhigh = ax.get_xlim() # get x higher and lower limits
+                xdiff = xhigh-xlow # calculate the total range of x
+                xpad = ((ydiff*aspect)-xdiff)/2 # calculate how much the xlimits should be padded on either side to set aspect ratio correctly
+                ax.set_xlim(xlow-xpad, xhigh+xpad) # set new limits
+            else:
+                ax.set_xlim([0, image_w])
+                ax.set_ylim([-image_h, 0])
+
+            f.canvas.draw()
+            ax.clear()
 
 # Plotting coordinates of joints
 def prepare_data_for_plotting(period_person_division, plottable_people, running_fragments):
@@ -526,9 +616,10 @@ def prepare_data_for_plotting(period_person_division, plottable_people, running_
 def get_dataframe_from_coords(coord_list):
     """"
     Get a list of coordinates and turns this into a DataFrame to be used for analysis
+
     :param coord_list: List of List of dictionaries containing coordinates the run both ways.
     :return coord_df: A DataFrame containing all x and y coordinates of the runner during the run.
-    
+
     The for loop when the 'Fragment' = i+1 is done should become a double for loop, also naming the video number, when adding more videos
     """
     coord_df = pd.DataFrame(coord_list[0]).append(pd.DataFrame(coord_list[1]), ignore_index=True)
@@ -609,7 +700,7 @@ def forward_leaning(feature_df, coord_df):
                 temp_sum += difference
             #print(difference)
         #print(temp_sum)
-        feature_df.iloc[i, 19] = abs(temp_sum / frame_count)  
+        feature_df.iloc[i, 19] = abs(temp_sum / frame_count)
     return feature_df
 
 # Plotly functions to make coördinates more insightfull
@@ -683,3 +774,194 @@ def plotly_boxplot(pointlist, coord_df):
     fig = dict(data=points, layout=layout)
 
     return fig
+
+
+# Obsoleet functions
+
+def join_lists_on_mutual_elements(plottable_subsets):
+    """
+
+
+    :param plottable_subsets:
+    :return:
+    """
+    all_moving_people = set(chain.from_iterable(plottable_subsets))
+    for each in all_moving_people:
+        components = [x for x in plottable_subsets if each in x]
+        for i in components:
+            plottable_subsets.remove(i)
+        plottable_subsets += [list(set(chain.from_iterable(components)))]
+    return plottable_subsets
+
+def get_links(moving_people, mean_x_per_moving_person):
+    links = []
+    for n, person in enumerate(moving_people):
+        x = mean_x_per_moving_person[person][:, 0]
+        y = mean_x_per_moving_person[person][:, 1]
+
+        # calculate polynomial
+        z = np.polyfit(x, y, 1)
+        f = np.poly1d(z)
+
+        i = 2  # how many periods back and forth to compare
+
+        if n < i:
+            i = n
+
+        for j in range(1, i + 1):
+            if n > 0:
+                previous_person = moving_people[n - j]
+
+                previous_x = mean_x_per_moving_person[previous_person][:, 0]
+                previous_y = mean_x_per_moving_person[previous_person][:, 1]
+
+                previous_rmse = rmse(f(previous_x), previous_y)
+
+                links.append((previous_person, person, previous_rmse))
+
+            if n < len(moving_people) - j:
+                next_person = moving_people[n + j]
+
+                next_x = mean_x_per_moving_person[next_person][:, 0]
+                next_y = mean_x_per_moving_person[next_person][:, 1]
+
+                next_rmse = rmse(f(next_x), next_y)
+
+                links.append((person, next_person, next_rmse))
+    return links
+
+
+# Averaging RMSE between links
+def get_linked_people(maximum_normalized_distance, links):
+    """
+
+    """
+    link_rmse = np.array(
+        [(key, np.mean(np.array(list(group))[:, 2])) for key, group in groupby(links, lambda x: (x[0], x[1]))])
+    # Use threshold on RMSE to get linked people
+    linked_people = link_rmse[link_rmse[:, 1] < maximum_normalized_distance * 2][:, 0]
+
+    # Setting in right format
+    return [list(i) for i in linked_people]
+
+
+# Getting plottable information per file
+# Getting plottable information per file
+def get_plottables_per_file_and_period_person_division(people_per_file, fps, connections):
+    """"
+    Troep code die we nog ff niet begrijpen maar het werkt haleluja
+
+    """
+    plottables_per_file = []  # used for plotting all the coordinates and connected body part lines
+
+    # for each period/frame all 'people' are stored.
+    # For a certain period this will allow us to look back in time at the previous x frames
+    # in order to be able to group people in disjoint frames together
+
+    period_person_division = {}  # Dict of dicts
+
+    next_person = 0
+    for frame, file in enumerate(people_per_file):
+        period_person_division[frame] = {}  # for a frame (period) make a new dictionary in which to store the identified people
+
+        plot_lines = []  # for plotting the entire video
+        plot_coords = []  # for plotting the entire video
+        plottables = {}  # new dictionary for a period, used for plotting entire video
+
+        # coordinates of all people in this frame will be added to this list, to be iterated over later on
+        # for plotting entire video
+        coords = []
+        # Identifying people over disjoint frames
+        period_person_division, next_person = identify_people_over_multiple_frames(fps, frame, period_person_division,
+                                                                                   next_person)
+
+
+        # For plotting the entire video ###
+        for person_coords in coords:  # for all people in this frame
+            plot_coords = plot_coords + list(
+                person_coords[~(person_coords == 0).any(axis=1)])  # append present plottable coords
+
+            # enumerate all x,y coordinate sets to be able to draw up lines
+            # remove the ones that contain the value 0 --> joint not present
+            coord_dict = {key: value for key, value in dict(enumerate(person_coords[:, :2])).items() if 0 not in value}
+
+            present_keypoints = set(coord_dict.keys())  # only use joints that are present
+
+            # get present connections: a connection contains 2 unique points, if a connection contains one of the keypoints that
+            # is not present, the intersection of the connection with the present keypoints will be lower than 2
+            # hence we end up with only the present connections
+            present_connections = [connection for connection in connections if
+                                   len(present_keypoints & set(connection)) == 2]
+
+            # gather the connections, change the layout to fit matplotlib and extend the plot_lines list
+            plot_lines = plot_lines + [np.transpose([coord_dict[a], coord_dict[b]]) for a, b in present_connections]
+
+        if len(plot_coords) == 0:
+            continue
+
+        plot_coords = np.array(plot_coords)  # for easy indexing
+
+        plottables['plot_coords'] = plot_coords
+        plottables['plot_lines'] = plot_lines
+
+        plottables_per_file.append(plottables)  # append plottables_per_file with the plottables dictionary for this frame
+    return plottables_per_file, period_person_division
+
+
+def identify_people_over_multiple_frames(fps, file, frame, period_person_division, next_person):
+    """
+    This
+
+    :param next_person: arbitrary identifier for a person
+    :param empty_joints: List of all joints (identified by their index in the coordinate
+    :param fps: number of frames per second in currenct video
+    :param frame: current frame in loop
+
+    :param person_coords: Coordinates identified by openpose for this person in current frame
+
+    :return
+    """
+    # next_person = 0  # used to create a new person when the algorithm can't find a good person fit based on previous x frames
+    for person in file:
+        # information for identifying people over disjoint frames
+        person_coords = np.array([[x, -y, z] for x, y, z in np.reshape(person['pose_keypoints'], (18, 3))])
+
+        best_person_fit = None  # Initially no best fit person in previous x frames is found
+        if frame == 0:  # period == 0 means no identified people exist, so we need to create them ourselves
+            period_person_division[frame][next_person] = person_coords  # create new next people since it is the first period
+            next_person += 1
+        else:
+            # set sufficiently high rmse so it will be overwritten easily
+            min_rmse = 1000
+
+            # we don't want to base any computation on joints that are not present (==0), so we safe those indices that don't
+            # contain any information
+            empty_joints = set(np.where((person_coords == 0).all(axis=1))[0])
+
+            # only select used joints
+            used_joints = list(set(range(18)) - empty_joints)
+            # set rmse_threshold equal to the mean distance of each used joint to the center
+            rmse_threshold = determine_rmse_threshold(person_coords, used_joints)
+
+            # for all possible previous periods within max_frame_diff
+            for i in range(1, amount_of_frames_to_look_back(fps, frame) + 1):
+                for earlier_person in period_person_division[frame - i].keys():  # compare with all people
+                    if earlier_person not in period_person_division[frame].keys():  # if not already contained in current period
+                        earlier_person_coords = period_person_division[frame - i][earlier_person]
+                        empty_joints_copy = empty_joints.copy()
+                        empty_joints_copy = empty_joints_copy | set(np.where((earlier_person_coords == 0).all(axis=1))[0])
+                        used_joints = list(set(range(18)) - empty_joints_copy)
+                        if len(used_joints) == 0:
+                            continue
+                        # compute root mean squared error based only on mutual used joints
+                        person_distance = rmse(earlier_person_coords[used_joints, :], person_coords[used_joints, :])
+                        if person_distance < rmse_threshold:  # account for rmse threshold (only coordinates very close)
+                            if person_distance < min_rmse:  # if best fit, when compared to previous instances
+                                min_rmse = person_distance  # overwrite
+                                best_person_fit = earlier_person  # overwrite
+            if best_person_fit is not None:  # if a best person fit is found
+                period_person_division[frame][best_person_fit] = person_coords
+            else:  # else create new next person
+                period_person_division[frame][next_person] = person_coords
+                next_person += 1
+    return period_person_division, next_person
