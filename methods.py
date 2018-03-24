@@ -6,7 +6,7 @@ import time
 # import plotly.plotly as py
 import plotly.graph_objs as go
 import pandas as pd
-#import cv2
+import cv2
 from sklearn.cluster import DBSCAN
 
 # pip install .whl file from https://www.lfd.uci.edu/~gohlke/pythonlibs/#opencv
@@ -571,7 +571,123 @@ def get_running_and_turning_fragments(plottable_people, mean_x_per_person, perso
     running_fragments = all_fragments[1::2]
     turning_fragments = all_fragments[::2]
 
-    return running_fragments, turning_fragments
+    return running_fragments, turning_fragments, fragments
+
+def get_clip_stats(clip_name):
+    '''Get clip stats, when provided. Else return None.'''
+
+    distances = ['16500']
+
+    clip_name_split = clip_name.split('_')
+    if clip_name_split[-1] in distances:
+        length = int(clip_name_split[-3])
+        weight = int(clip_name_split[-2])
+        distance = int(clip_name_split[-1])
+        return length, weight, distance
+    else:
+        return None
+
+def euclidean_pairwise_distance(matrix):
+    '''Given a matrix, calculates the pairwise distance between two rows. If the number of rows is not equal to 2 NaN is returned'''
+
+    if matrix.shape[0] != 2:
+        return np.nan
+
+    return pairwise_distances(matrix[0].reshape(1,-1), matrix[1].reshape(1, -1))
+
+def get_person_length_in_pixels(person_plottables, length, joint_confidence):
+    '''Given the provided length of a person and some confidence bound on each joint ('gewricht' in Dutch) returns a measurement
+    of a persons length in pixel values.'''
+
+    # z value in the x,y,z coordinate output. Set a threshold to only include fairly certain coords
+
+    # find all the coordinates of the person that are not empty and that exceed a set confidence level
+    coord_list = [np.concatenate((np.arange(18).reshape(-1,1), coords), axis=1)[(~(coords == 0).all(axis=1))
+                                                                            & (coords[:,2] > joint_confidence)]
+                for period, person_dictionary in person_plottables.items()
+                for person, coords in person_dictionary.items()]
+
+    # Check out: https://github.com/CMU-Perceptual-Computing-Lab/openpose/blob/master/doc/media/keypoints_pose.png
+    connections = [(0,1), (1,8), (1,11), (8,9), (11,12), (9,10), (12,13)]  # connections used for estimating length in pixels
+
+    connection_lengths = [] # will contain averaged pixel length of the connections
+
+    for connection in connections:
+        connection_length = np.nanmean([euclidean_pairwise_distance(coords[np.isin(coords[:,0], connection)][:, 1:3])
+                    for coords in coord_list])
+
+        connection_lengths.append(connection_length)
+
+    pixel_length = connection_lengths[0] + sum([np.mean([connection_lengths[i], connection_lengths[i+1]])
+                                                for i in range(len(connections))[1::2]])
+
+    return pixel_length
+
+def speed_via_length(person_plottables, running_fragments, length, fps, joint_confidence=0.5):
+    '''Returns estimated speed in km/h per running fragment by using provided length as inference measurement.'''
+
+    pixel_length = get_person_length_in_pixels(person_plottables, length, joint_confidence)
+    length_in_meters = length/100
+
+    pixel_length_ratio = length_in_meters/pixel_length
+
+    speed = []
+
+    for start, end in running_fragments:
+        start = int(round(start, 0))
+        end = int(round(end, 0))
+
+        start_x = np.nanmean([np.mean(coords[:,0]) for coords in person_plottables[start].values()])
+        end_x = np.nanmean([np.mean(coords[:,0]) for coords in person_plottables[end].values()])
+
+        x_diff = abs(end_x-start_x)
+
+        meters_diff = pixel_length_ratio*x_diff
+
+        fragment_speed = meters_diff/((end-start)/fps)*3.6
+
+        speed.append(fragment_speed)
+
+    return speed
+
+def speed_via_distance(person_plottables, running_fragments, fragments, distance, fps):
+    '''Returns estimated speed in km/h per running fragment by using provided distance as inference measurement.'''
+
+    distance_in_meters = distance/1000
+
+    bounds = []
+
+    for start,end in fragments[1:3]:
+        start_x = np.nanmean([np.mean(coords[:,0]) for coords in person_plottables[start].values()])
+        end_x = np.nanmean([np.mean(coords[:,0]) for coords in person_plottables[end].values()])
+
+        bounds = bounds + [start_x, end_x]
+
+    lower_bound = min(bounds)
+    upper_bound = max(bounds)
+
+    pixel_distance = upper_bound-lower_bound
+
+    pixel_distance_ratio = distance_in_meters/pixel_distance
+
+    speed = []
+
+    for start, end in running_fragments:
+        start = int(round(start, 0))
+        end = int(round(end, 0))
+
+        start_x = np.nanmean([np.mean(coords[:,0]) for coords in person_plottables[start].values()])
+        end_x = np.nanmean([np.mean(coords[:,0]) for coords in person_plottables[end].values()])
+
+        x_diff = abs(end_x-start_x)
+
+        meters_diff = pixel_distance_ratio*x_diff
+
+        fragment_speed = meters_diff/((end-start)/fps)*3.6
+
+        speed.append(fragment_speed)
+
+    return speed
 
 def plot_person(plottables, image_h, image_w, zoom=True, pad=3, sleep=0):
     """
