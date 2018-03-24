@@ -2,6 +2,7 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import time
 # import plotly.plotly as py
 import plotly.graph_objs as go
 import pandas as pd
@@ -500,6 +501,8 @@ def get_running_and_turning_fragments(plottable_people, mean_x_per_person, perso
     # Individually look at each fragment (this contains parts that are a running motion and parts that are a turning/starting motion)
     # Rationale: Check for maximum change in accelertion by taking minimum/maximum of second derivative
 
+    avg_second_derivative = np.mean(abs(np.diff(np.diff(ynew)))) # average second derivative
+
     for fragment in fragments:
         # mask for selecting the coordinates of each fragment
         mask = (xnew >= fragment[0]) & (xnew < fragment[1])
@@ -513,30 +516,46 @@ def get_running_and_turning_fragments(plottable_people, mean_x_per_person, perso
 
         periods = fragment_series.index.tolist()
 
-        # check for points where a start or a slow-down is finalized in the upper and lower regions
-        # define these regions by first setting lower and upper bounds
-        lower_bound = periods[len(periods)//3]
-        upper_bound = periods[(len(periods)//3)*2]
+        # We split the fragment in a x number of parts and look only at the middle part (i.e. interval [1/x, x-1/x] )
+        # In this interval we will find the deviations in both sides from second derivative == 0 and mark those as the start and end point of a running fragment
+        split = 5
+        lower_bound = periods[len(periods)//split]
+        mid = periods[len(periods)//2]
+        upper_bound = periods[(len(periods)//split)*(split-1)]
 
-        # getting fragment lower selection
-        fragment_lower_sel = fragment_series[fragment_series.index <= lower_bound]
-        secondDerivative = fragment_lower_sel.diff().diff()
+        secondDerivative = fragment_series.diff().diff() # calculating second derivative
 
-        # check if line is upward sloping or downward sloping
+        # print(fragment[0], lower_bound, mid, upper_bound, fragment[1])
+
+        # plt.figure()
+        # secondDerivative.plot()
+
+        # At second derivative == 0, a person reaches his/her top speed
+        # Around this point we set a certain confidence bound, for which we can be fairly sure that a person is running
+        # Since the model tended to include slowing down a lot, a penalty is added relative to the start-up part
+        # The map function makes sure that when no value falls within the interval that the upper or lower bound is assigned
+
+        start_up_thresh = avg_second_derivative
+        slow_down_thresh = (2/5)*start_up_thresh
+
         if y_sel[0] < y_sel[-1]:
-            turning_frames.append(secondDerivative.argmin())
-        else:
-            turning_frames.append(secondDerivative.argmax())
+            min_frame = secondDerivative[secondDerivative.apply(lambda x: 0 < x < start_up_thresh)].index.min()
+            min_frame = list(map(lambda x: lower_bound if x != x else x, [min_frame]))[0]
 
-        # getting fragment upper selection
-        fragment_upper_sel = fragment_series[fragment_series.index >= upper_bound]
-        secondDerivative = fragment_upper_sel.diff().diff()
+            max_frame = secondDerivative[secondDerivative.apply(lambda x: -slow_down_thresh < x < 0)].index.max()
+            max_frame = list(map(lambda x: upper_bound if x != x else x, [max_frame]))[0]
 
-        # check if line is upward sloping or downward sloping
-        if y_sel[0] < y_sel[-1]:
-            turning_frames.append(secondDerivative.argmax())
+            turning_frames.append(min_frame)
+            turning_frames.append(max_frame)
         else:
-            turning_frames.append(secondDerivative.argmin())
+            min_frame = secondDerivative[secondDerivative.apply(lambda x: -start_up_thresh < x < 0)].index.min()
+            min_frame = list(map(lambda x: lower_bound if x != x else x, [min_frame]))[0]
+
+            max_frame = secondDerivative[secondDerivative.apply(lambda x: 0 < x < slow_down_thresh)].index.max()
+            max_frame = list(map(lambda x: upper_bound if x != x else x, [max_frame]))[0]
+
+            turning_frames.append(min_frame)
+            turning_frames.append(max_frame)
 
     # get the estimated x-position where a start or a slow-down is finalized (just for plotting purposes)
     z = np.polyfit(x, y, 10); f = np.poly1d(z)
@@ -554,15 +573,16 @@ def get_running_and_turning_fragments(plottable_people, mean_x_per_person, perso
 
     return running_fragments, turning_fragments
 
-def plot_person(plottables, f, ax, image_h, image_w, zoom=True, pad=3):
+def plot_person(plottables, image_h, image_w, zoom=True, pad=3, sleep=0):
     """
     :param ax:
     :param f:
     :param plottables:
     """
+    f, ax = plt.subplots(figsize=(14,10))
 
     y_coords = [coords[~(coords== 0).any(axis=1)][:, 1]
-            for period_dictionary in plottables for coords in period_dictionary.values()]
+            for period_dictionary in plottables.values() for coords in period_dictionary.values()]
 
     y_coords = list(chain.from_iterable(y_coords))
 
@@ -573,7 +593,7 @@ def plot_person(plottables, f, ax, image_h, image_w, zoom=True, pad=3):
 
     aspect = image_w/image_h
 
-    for t in range(len(plottables)):
+    for t in sorted(plottables.keys()):
 
         for person in plottables[t].keys():
             plot_coords = plottables[t][person]
@@ -594,6 +614,8 @@ def plot_person(plottables, f, ax, image_h, image_w, zoom=True, pad=3):
             for x, y in plot_lines:
                 plt.plot(x, y)
 
+            ax.annotate('Frame: {}'.format(t), xy=(0.02, 0.95), xycoords='axes fraction', bbox=dict(facecolor='red', alpha=0.5), fontsize=12)
+
             if zoom:
                 ax.set_ylim(cy-stdy*pad, cy+stdy*pad) # set y-limits by padding around the average center of y
                 xlow, xhigh = ax.get_xlim() # get x higher and lower limits
@@ -606,6 +628,10 @@ def plot_person(plottables, f, ax, image_h, image_w, zoom=True, pad=3):
 
             f.canvas.draw()
             ax.clear()
+
+            break
+
+        time.sleep(sleep)
 
 # Plotting coordinates of joints
 def prepare_data_for_plotting(period_person_division, plottable_people, running_fragments):
