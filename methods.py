@@ -6,7 +6,7 @@ import time
 # import plotly.plotly as py
 import plotly.graph_objs as go
 import pandas as pd
-import cv2
+#import cv2
 from sklearn.cluster import DBSCAN
 
 # pip install .whl file from https://www.lfd.uci.edu/~gohlke/pythonlibs/#opencv
@@ -664,19 +664,29 @@ def get_dataframe_from_coords(coord_list):
 
     :param coord_list: List of List of dictionaries containing coordinates the run both ways.
     :return coord_df: A DataFrame containing all x and y coordinates of the runner during the run.
+
+    The for loop when the 'Fragment' = i+1 is done should become a double for loop, also naming the video number, when adding more videos
     """
     coord_df = pd.DataFrame(coord_list[0]).append(pd.DataFrame(coord_list[1]), ignore_index=True)
+    for i in range(len(coord_list)):
+        if i == 0:
+            coord_df = pd.DataFrame(coord_list[i])
+            coord_df['Fragment'] = i +1
+        else:
+            temp_df = pd.DataFrame(coord_list[i])
+            temp_df['Fragment'] = i + 1
+            coord_df = coord_df.append(temp_df)
 
     coord_df.columns = ['Nose', 'Neck', 'Right Shoulder', 'Right Elbow', 'Right Hand',
                         'Left Shoulder', 'Left Elbow', 'Left Hand', 'Right Hip',
                         'Right Knee', 'Right Foot', 'Left Hip', 'Left Knee',
-                        'Left Foot', 'Right Eye', 'Left Eye', 'Right Ear', 'Left Ear']
+                        'Left Foot', 'Right Eye', 'Left Eye', 'Right Ear', 'Left Ear', 'Fragment']
 
     # add the frame number
     coord_df['Frame'] = coord_df.index
 
     # melt the dataframe to get the locations in one row
-    coord_df = pd.melt(coord_df, id_vars='Frame', var_name='Point', value_name='Location')
+    coord_df = pd.melt(coord_df, id_vars=['Frame', 'Fragment'], var_name='Point', value_name='Location')
 
     # remove unecessary signs, for some unclear reason this is not necessary after splitting
     # coord_df['Location'] = coord_df.Location.apply(lambda x: str(x).replace('[', ''))
@@ -697,27 +707,54 @@ def get_dataframe_from_coords(coord_list):
 def to_feature_df(coord_df):
     """
     Gets a DataFrame of coordinates and turns this into features.
-    In this case, the standard deviation of movement both horizontally as well as vertically
+    In this case, the standard deviation of movement vertically. Extension to also horizontally can be easily made in case this helps for discovering speed.
 
     :param coord_df: A dataframe containing all relevant coördiantes observed in the video.
 
-    :return std_df: returns a dataframe containing standard deviations of all observed coordinates
+    :return features_df: returns a dataframe containing standard deviations of all observed coordinates
     """
     coord_df['video'] = 1  # needs to be used as itterator in later version for multiple video's
 
-    x_df = coord_df.pivot_table(index='video', columns='Point', values='x', aggfunc=np.std)
-    y_df = coord_df.pivot_table(index='video', columns='Point', values='y', aggfunc=np.std)
-
-    x_df.columns = [str(col) + '_x' for col in x_df.columns]
-    y_df.columns = [str(col) + '_y' for col in y_df.columns]
-
-    x_df['video'] = x_df.index
+    y_df = coord_df.pivot_table(index=['video', 'Fragment'], columns='Point', values='y', aggfunc=np.std)
+    #y_df.columns = [str(col) + '_y' for col in y_df.columns]
     y_df['video'] = y_df.index
+    feature_df = y_df
 
-    std_df = pd.merge(x_df, y_df, on='video', how='outer')
-    return std_df
+    return feature_df, coord_df
     # return y_df
 
+def forward_leaning(feature_df, coord_df):
+    """
+    Create forward leaning feature to be used in classification. The forward leaning feature discribes to what extent a person
+    leans forward. which could be an indicator of a good runner
+
+    :param feature_df: feature_df
+    :param coord_df:  A dataframe containing all relevant coördiantes observed in the video.
+    :return feature_df: returns a dataframe containing standard deviations and other features of all observed coordinates
+    """
+    feature_df['Forward_leaning'] = 0
+    fragments = set(coord_df.Fragment)
+
+    for i in range(len(fragments)):
+        fragment_df = coord_df[coord_df['Fragment'] == i+1]
+        shoulder_df = fragment_df[fragment_df['Point'] == 'Right Shoulder']
+        hip_df = fragment_df[fragment_df['Point'] == 'Right Hip']
+        frames = set(fragment_df.Frame)
+        temp_sum = 0
+        frame_count = 0
+        for j in range(len(frames)):
+            difference = shoulder_df.iloc[j, 3] - hip_df.iloc[j, 3]
+            #couldn't think of a smarter way to not take the nan values into account for the average
+            if difference > 1:
+                frame_count += 1
+                temp_sum += difference
+            if difference < -1:
+                frame_count += 1
+                temp_sum += difference
+            #print(difference)
+        #print(temp_sum)
+        feature_df.iloc[i, 19] = abs(temp_sum / frame_count)
+    return feature_df
 
 # Plotly functions to make coördinates more insightfull
 # todo: @collin kan jij nog naar deze functie kijken
