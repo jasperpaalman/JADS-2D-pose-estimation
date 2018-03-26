@@ -127,19 +127,20 @@ def get_period_person_division(people_per_file, fps):
 
     """
     period_person_division = {}  # Dict of dicts
-
+    
+    # used to create a new person when the algorithm can't find a good person fit based on previous x frames
     next_person = 0
+    
     for frame, file in enumerate(people_per_file):
         period_person_division[frame] = {}  # for a frame (period) make a new dictionary in which to store the identified people
 
-        # next_person = 0  # used to create a new person when the algorithm can't find a good person fit based on previous x frames
         for person in file:
             # information for identifying people over disjoint frames
             person_coords = np.array([[x, -y, z] for x, y, z in np.reshape(person['pose_keypoints'], (18, 3))])
 
             best_person_fit = None  # Initially no best fit person in previous x frames is found
-            if frame == 0:  # period == 0 means no identified people exist, so we need to create them ourselves
-                period_person_division[frame][next_person] = person_coords  # create new next people since it is the first period
+            if frame == 0:  # frame == 0 means no identified people exist (because first frame), so we need to create them ourselves
+                period_person_division[frame][next_person] = person_coords  # create new next people since it is the first frame
                 next_person += 1
             else:
                 # set sufficiently high rmse so it will be overwritten easily
@@ -820,7 +821,7 @@ def get_dataframe_from_coords(coord_list):
     return coord_df
 
 
-def to_feature_df(coord_df):
+def to_feature_df(coord_df, video_number):
     """
     Gets a DataFrame of coordinates and turns this into features.
     In this case, the standard deviation of movement vertically. Extension to also horizontally can be easily made in case this helps for discovering speed.
@@ -829,7 +830,7 @@ def to_feature_df(coord_df):
 
     :return features_df: returns a dataframe containing standard deviations of all observed coordinates
     """
-    coord_df['video'] = 1  # needs to be used as itterator in later version for multiple video's
+    coord_df['video'] = video_number  # needs to be used as itterator in later version for multiple video's
 
     y_df = coord_df.pivot_table(index=['video', 'Fragment'], columns='Point', values='y', aggfunc=np.std)
     #y_df.columns = [str(col) + '_y' for col in y_df.columns]
