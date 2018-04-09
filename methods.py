@@ -127,10 +127,10 @@ def get_period_person_division(people_per_file, fps):
 
     """
     period_person_division = {}  # Dict of dicts
-    
+
     # used to create a new person when the algorithm can't find a good person fit based on previous x frames
     next_person = 0
-    
+
     for frame, file in enumerate(people_per_file):
         period_person_division[frame] = {}  # for a frame (period) make a new dictionary in which to store the identified people
 
@@ -784,39 +784,20 @@ def get_dataframe_from_coords(coord_list):
 
     The for loop when the 'Fragment' = i+1 is done should become a double for loop, also naming the video number, when adding more videos
     """
-    coord_df = pd.DataFrame(coord_list[0]).append(pd.DataFrame(coord_list[1]), ignore_index=True)
-    for i in range(len(coord_list)):
-        if i == 0:
-            coord_df = pd.DataFrame(coord_list[i])
-            coord_df['Fragment'] = i +1
-        else:
-            temp_df = pd.DataFrame(coord_list[i])
-            temp_df['Fragment'] = i + 1
-            coord_df = coord_df.append(temp_df)
 
-    coord_df.columns = ['Nose', 'Neck', 'Right Shoulder', 'Right Elbow', 'Right Hand',
-                        'Left Shoulder', 'Left Elbow', 'Left Hand', 'Right Hip',
-                        'Right Knee', 'Right Foot', 'Left Hip', 'Left Knee',
-                        'Left Foot', 'Right Eye', 'Left Eye', 'Right Ear', 'Left Ear', 'Fragment']
+    # More robust way of creating the coord_df
+    coord_df = pd.DataFrame(
+    [(n, frame, ix, *coords) for n, coord_list in enumerate(coord_list) for frame, coord_dict in enumerate(coord_list)
+             for ix, coords in coord_dict.items()], columns = ['Fragment', 'Frame', 'Point', 'x', 'y'])
 
-    # add the frame number
-    coord_df['Frame'] = coord_df.index
+    # Numeric to name dictionary
+    replace_dict = dict(enumerate(['Nose', 'Neck', 'Right Shoulder', 'Right Elbow', 'Right Hand',
+                            'Left Shoulder', 'Left Elbow', 'Left Hand', 'Right Hip',
+                            'Right Knee', 'Right Foot', 'Left Hip', 'Left Knee',
+                            'Left Foot', 'Right Eye', 'Left Eye', 'Right Ear', 'Left Ear']))
 
-    # melt the dataframe to get the locations in one row
-    coord_df = pd.melt(coord_df, id_vars=['Frame', 'Fragment'], var_name='Point', value_name='Location')
-
-    # remove unecessary signs, for some unclear reason this is not necessary after splitting
-    # coord_df['Location'] = coord_df.Location.apply(lambda x: str(x).replace('[', ''))
-    # coord_df['Location'] = coord_df.Location.apply(lambda x: str(x).replace(']', ''))
-
-    # split up the coordinates and put them into separate columns
-    coord_df['Split'] = coord_df.Location.apply(lambda x: str(x).split('  '))
-    coord_df['x'] = coord_df.Location.str.get(0)
-    coord_df['y'] = coord_df.Location.str.get(1)
-
-    # delete irrelevant columns
-    del coord_df['Split']
-    del coord_df['Location']
+    # Turn numerics into names
+    coord_df['Point'] = coord_df['Point'].replace(replace_dict)
 
     return coord_df
 
@@ -873,6 +854,57 @@ def forward_leaning(feature_df, coord_df):
         feature_df.iloc[i, 19] = abs(temp_sum / frame_count)
     return feature_df
 
+def angle_between(p1, p2):
+    ang1 = np.arctan2(*p1[::-1])
+    ang2 = np.arctan2(*p2[::-1])
+    return np.rad2deg((ang1 - ang2) % (2 * np.pi))
+
+def forward_leaning_angle(coord_df):
+    """
+    Create forward leaning feature to be used in classification. The forward leaning feature describes to what extent a person
+    leans forward. which could be an indicator of a good runner
+
+    :param coord_df: A dataframe containing all relevant coördiantes observed in the video.
+    :param running_fragments: Running intervals for a given video
+    :return forward_leaning_per_fragment: Return a list with a forward leaning angle for each fragment
+    """
+
+    forward_leaning = []
+
+    fragments = coord_df['Fragment'].unique() # get all running fragments
+
+    for fragment in fragments:
+        fragment_df = coord_df[coord_df['Fragment'] == fragment]
+
+        start = fragment_df[fragment_df['Frame'] == fragment_df['Frame'].min()]['x'].mean() # start x
+        end = fragment_df[fragment_df['Frame'] == fragment_df['Frame'].max()]['x'].mean() # end x
+
+        forward_leaning.append([])
+
+        frames = fragment_df['Frame'].unique() # unique frames for this fragment
+
+        for frame in frames:
+            df_sel = fragment_df[fragment_df['Frame'] == frame]
+            forward_leaning_angles = []
+            for points in [('Right Shoulder','Right Hip'),('Left Shoulder','Left Hip')]:
+                coords = df_sel[df_sel['Point'].isin(points)][['x', 'y']].as_matrix()
+                if len(coords) == 2:
+                    forward_leaning_point = coords[0] - coords[1]
+
+                    # Determine direction
+                    if end > start: # direction is right
+                        forward_leaning_angles.append(angle_between((forward_leaning_point[0], forward_leaning_point[1]),
+                                                                    (abs(forward_leaning_point[0]), 0)))
+                    else: # direction is left
+                        forward_leaning_angles.append(angle_between((-abs(forward_leaning_point[0]), 0),
+                                                                    (forward_leaning_point[0], forward_leaning_point[1])))
+            if forward_leaning_angles != []: # If points were found in this frame
+                forward_leaning[fragment].append(np.mean(forward_leaning_angles))
+
+    forward_leaning_per_fragment = [np.mean(forward_leaning_list) for forward_leaning_list in forward_leaning]
+
+    return forward_leaning_per_fragment
+
 # Plotly functions to make coördinates more insightfull
 # todo: @collin kan jij nog naar deze functie kijken
 def plotly_scatterplot(pointlist, coord_df):
@@ -885,7 +917,7 @@ def plotly_scatterplot(pointlist, coord_df):
             y=pointdf['y'],
             mode='markers',
             name=pointlist[i],
-            text=pointdf['Frame'],
+            # text=pointdf['Frame'],
             opacity=0.7,
             marker=dict(
                 size='5',  # makes the dots invisible, can't get rid of them somehow
