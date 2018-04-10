@@ -1,12 +1,8 @@
+from typing import List
+
 import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from itertools import chain
-import methods as m
-import pickle
 import warnings
-import plotly as py
-import os
+import pandas as pd
 
 warnings.filterwarnings('ignore')
 
@@ -28,11 +24,12 @@ def create_total_feature_df(coord_df, video_number, return_df):
     return return_df
 
 
-def to_feature_df(coord_df, video_number):
+def to_feature_df(coord_df: pd.DataFrame, video_number: int) -> pd.DataFrame:
     """
     Gets a DataFrame of coordinates and turns this into features.
     In this case, the standard deviation of movement vertically. Extension to also horizontally can be easily made in case this helps for discovering speed.
 
+    :param video_number: The number assigned to 'video' in coord_df
     :param coord_df: A dataframe containing all relevant coördiantes observed in the video.
 
     :return features_df: returns a dataframe containing standard deviations of all observed coordinates
@@ -53,7 +50,7 @@ def to_feature_df(coord_df, video_number):
     return feature_df
 
 
-def forward_leaning(coord_df):
+def forward_leaning(coord_df: pd.DataFrame) -> List:
     """
     Create forward leaning feature to be used in classification. The forward leaning feature discribes to what extent a person
     leans forward. which could be an indicator of a good runner
