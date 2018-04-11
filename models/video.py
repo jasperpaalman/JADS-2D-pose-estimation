@@ -54,3 +54,5 @@ class Video:
         if video_location:
             width, height, frame_rate = determine_video_meta_data(video_location)
             return Video(people_per_frame, source, frame_rate, width, height)
+        else:
+            return Video(people_per_frame, source)
