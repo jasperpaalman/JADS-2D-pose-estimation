@@ -1155,7 +1155,7 @@ def identify_people_over_multiple_frames(fps, file, frame, period_person_divisio
 
     :param next_person: arbitrary identifier for a person
     :param empty_joints: List of all joints (identified by their index in the coordinate
-    :param fps: number of frames per second in currenct video
+    :param fps: number of frames per second in current video
     :param frame: current frame in loop
 
     :param person_coords: Coordinates identified by openpose for this person in current frame

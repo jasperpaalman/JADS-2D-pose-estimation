@@ -10,7 +10,7 @@ warnings.filterwarnings('ignore')
 def create_total_feature_df(coord_df, video_number, return_df):
     """
     Function that combines the different feature data frames from the different video's into one big frame
-    :param coord_df: A dataframe containing all relevant coördiantes observed in the video.
+    :param coord_df: A dataframe containing all relevant coordinates observed in the video.
     :param video_number: The index of the video currently being analyzed
     :param return_df: DataFrame containing the combined features of all video's
     :return return_df: DataFrame containing the combined features of all video's
@@ -27,10 +27,11 @@ def create_total_feature_df(coord_df, video_number, return_df):
 def to_feature_df(coord_df: pd.DataFrame, video_number: int) -> pd.DataFrame:
     """
     Gets a DataFrame of coordinates and turns this into features.
-    In this case, the standard deviation of movement vertically. Extension to also horizontally can be easily made in case this helps for discovering speed.
+    In this case, the standard deviation of movement vertically. Extension to also horizontally can be easily made in
+    case this helps for discovering speed.
 
     :param video_number: The number assigned to 'video' in coord_df
-    :param coord_df: A dataframe containing all relevant coördiantes observed in the video.
+    :param coord_df: A dataframe containing all relevant coordinates observed in the video.
 
     :return features_df: returns a dataframe containing standard deviations of all observed coordinates
     """
@@ -44,7 +45,7 @@ def to_feature_df(coord_df: pd.DataFrame, video_number: int) -> pd.DataFrame:
     # set video index
     feature_df['video'] = feature_df.index
 
-    # Add value representing how much (in absoluut values) someone leaned forward
+    # Add value representing how much (in absolute values) someone leaned forward
     feature_df['Forward_leaning'] = forward_leaning(coord_df)
 
     return feature_df
@@ -52,11 +53,11 @@ def to_feature_df(coord_df: pd.DataFrame, video_number: int) -> pd.DataFrame:
 
 def forward_leaning(coord_df: pd.DataFrame) -> List:
     """
-    Create forward leaning feature to be used in classification. The forward leaning feature discribes to what extent a person
-    leans forward. which could be an indicator of a good runner
+    Create forward leaning feature to be used in classification. The forward leaning feature describes to what extent a
+    person leans forward. which could be an indicator of a good runner
 
-    :param coord_df:  A dataframe containing all relevant coördiantes observed in the video.
-    :return return_list: returns a list containing containing the absoluut distance that is leaned forward
+    :param coord_df:  A dataframe containing all relevant coordinates observed in the video.
+    :return return_list: returns a list containing containing the absolute distance that is leaned forward
     """
     fragments = set(coord_df.Fragment)
     return_list = []

@@ -203,7 +203,7 @@ def get_period_person_division(people_per_file, fps):
 def get_person_period_division(period_person_division):
     """
     Function that reverses the indexing in the dictionary
-    :param period_person_division: data strucure containing per frame all persons and their
+    :param period_person_division: data structure containing per frame all persons and their
                                    corresponding coordinates
     :return person_period_division: data structure containing per person all frames and the coordinates
                                     of that person in that frame.
