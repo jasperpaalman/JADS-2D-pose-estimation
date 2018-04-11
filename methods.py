@@ -713,7 +713,7 @@ def speed_via_length(person_plottables, running_fragments, length, fps, joint_co
     return speed
 
 
-def speed_via_distance(person_plottables, running_fragments, fragments, distance, fps):
+def speed_via_distance(person_plottables, running_fragments, fragments, fps, distance=16500):
     '''Returns estimated speed in km/h per running fragment by using provided distance as inference measurement.'''
 
     distance_in_meters = distance / 1000
