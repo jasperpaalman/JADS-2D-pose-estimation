@@ -19,6 +19,7 @@ from itertools import groupby
 
 from sklearn.metrics import mean_squared_error
 from sklearn.metrics.pairwise import pairwise_distances
+from sklearn.metrics.pairwise import euclidean_distances
 from math import sqrt
 
 connections = [
@@ -119,7 +120,7 @@ def amount_of_frames_to_look_back(fps: float, frame: int) -> int:
 
 
 def get_period_person_division(people_per_file: List[List[Dict]], fps: float) \
-        -> Dict[int, Dict[int, any]]:
+            -> Dict[int, Dict[int, any]]:
     """"
 
 
@@ -131,7 +132,7 @@ def get_period_person_division(people_per_file: List[List[Dict]], fps: float) \
                                    corresponding coordinates
 
     """
-    period_person_division: Dict[int, Dict] = {}
+    period_person_division = {}
 
     # used to create a new person when the algorithm can't find a good person fit based on previous x frames
     next_person = 0
@@ -274,7 +275,7 @@ def plot_fit(plottables_per_file: List[Dict[str, any]], period: int, f, ax, imag
 
 
 def get_person_period_division(period_person_division: Dict[int, Dict[int, any]]) \
-        -> Dict[int, Dict[int, np.multiarray.ndarray]]:
+        -> Dict[int, Dict[int, np.ndarray]]:
     """
     Function that reverses the indexing in the dictionary
     :param period_person_division: data strucure containing per frame all persons and their
@@ -357,7 +358,7 @@ def get_dbscan_subsets(maximum_normalized_distance: float, person_plottables_df:
 
 
 def iterative_main_traject_finder(person_plottables_df: pd.DataFrame, plottable_people: any, period: int, x: List,
-                                  y: List, max_rmse: float):
+                                  y: List, max_rmse: float, max_dist: float):
     """
     Given a period that needs to be tested and some x,y coordinate set to extrapolate from, this function tests,
     based on the maximum RMSE, if the point(s) within this period are comparable with the current region.
@@ -375,6 +376,7 @@ def iterative_main_traject_finder(person_plottables_df: pd.DataFrame, plottable_
     """
 
     best_point = None
+    dist_point = None
 
     z = np.polyfit(x, y, 10)  # fit polynomial with sufficient degree to the datapoints
     f = np.poly1d(z)
@@ -389,16 +391,22 @@ def iterative_main_traject_finder(person_plottables_df: pd.DataFrame, plottable_
         if rmse_period < max_rmse:
             max_rmse = rmse_period
             best_point = (period, x_mean, person)
+        elif euclidean_distances([[period, x_mean]], list(zip(x,y))).min() < max_dist:
+            dist_point = (period, x_mean, person)
 
     if best_point != None:
         x.append(best_point[0])
         y.append(best_point[1])
         plottable_people = plottable_people | {int(best_point[2])}
+    elif dist_point != None:
+        x.append(dist_point[0])
+        y.append(dist_point[1])
+        plottable_people = plottable_people | {int(dist_point[2])}
 
     return x, y, plottable_people
 
 
-def determine_plottable_people(person_plottables_df, max_dbscan_subset, max_rmse):
+def determine_plottable_people(person_plottables_df, max_dbscan_subset, max_rmse, max_dist):
     """
     This function takes the largest DBSCAN subset as a starting point and starts expanding to periods that are not
     yet covered.
@@ -440,16 +448,16 @@ def determine_plottable_people(person_plottables_df, max_dbscan_subset, max_rmse
 
     for period in upper_periods:
         x, y, plottable_people = \
-            iterative_main_traject_finder(person_plottables_df, plottable_people, period, x, y, max_rmse)
+            iterative_main_traject_finder(person_plottables_df, plottable_people, period, x, y, max_rmse, max_dist)
 
     for period in list(lower_periods)[::-1]:
         x, y, plottable_people = \
-            iterative_main_traject_finder(person_plottables_df, plottable_people, period, x, y, max_rmse)
+            iterative_main_traject_finder(person_plottables_df, plottable_people, period, x, y, max_rmse, max_dist)
 
     return plottable_people
 
 
-def get_running_and_turning_fragments(plottable_people, mean_x_per_person, person_plottables_df, moving_people):
+def get_running_and_turning_fragments(plottable_people, mean_x_per_person, person_plottables_df, moving_people, fps):
     """Given the identified plottable people (running person/person under observation), this function returns the
     divided running and turning fragments. That is, each running fragment is a person running from one side to the other
     and the turning fragments are the fragments that remain.
@@ -478,22 +486,54 @@ def get_running_and_turning_fragments(plottable_people, mean_x_per_person, perso
     max_period = plottable_people_df['Period'].max()  # maximum period/frame
 
     # fit polynomial with sufficient degree to the datapoints
-    z = np.polyfit(x, y, 10)
+    z = np.polyfit(x, y, 20)
     f = np.poly1d(z)
 
     # Construct new smooth line using the polynomial function
-    xnew = np.linspace(min_period, max_period, num=len(x) * 10, endpoint=True)
+    # Number of points are the number of periods times a multiplication factor
+    xnew = np.linspace(min_period, max_period, num=len(x)*10, endpoint=True)
     ynew = f(xnew)
 
     # Determine optima indexes for xnew and ynew
-    optima_ix = np.diff(np.sign(np.diff(ynew))).nonzero()[0] + 1  # local min+max
+    # Function checks if there is a sign change and if sufficient points (# indicated through 'periods' variable)
+    # surrounding this candidate turning point are not changing in sign
+    periods = int(fps*10)
+    periods_sign_diff = np.diff(np.sign(np.diff(ynew)))
+    optima_ix = [i+1 for i in range(len(periods_sign_diff)) if periods_sign_diff[i] != 0
+                                                            and (periods_sign_diff[i-periods:i] == 0).all()
+                                                            and (periods_sign_diff[i+1:i+periods+1] == 0).all()] # local min+max
 
     # The optima reflect the turning points, which can be retrieved in terms of frames
-    turning_points = xnew[optima_ix].astype(int)
+    turning_points = xnew[optima_ix]
+    turning_points = list(map(lambda t: min(plottable_people_df['Period'].unique(), key=lambda x:abs(x-t)), turning_points))
+
+    # Add minimum and maximum period/frame of the interval we look at
+    turning_points = sorted(set(turning_points) | set([min_period, max_period]))
+
+    # Locate the x-mean values that belong to these points
+    z = np.polyfit(x, y, 10);
+    f = np.poly1d(z)
+    turning_x = list(f(turning_points))
+
+    # Find the relevant points by checking if it is the minimum and maximum period/frame of the interval or
+    # if the points are sufficiently apart in both x and y coordinate
+    points_x = []
+    points_y = []
+    for i, point in enumerate(turning_points):
+        if point in [min_period, max_period]:
+            points_x.append(point)
+            points_y.append(turning_x[i])
+        else:
+            if abs(turning_x[turning_points.index(points_x[-1])] - turning_x[i]) > 200:
+                points_x.append(point)
+                points_y.append(turning_x[i])
+
+    # Derive fragments
+    fragments = [(i, j) for i, j in zip(points_x, points_x[1:]) if j-i > fps]
 
     # Plot found information
     plt.plot(xnew, ynew)
-    plt.plot(xnew[optima_ix], ynew[optima_ix], "o", color='orange')
+    plt.plot(points_x, points_y, "o", color='orange')
     plt.title('Finding turning points (optima) and deriving fragments')
     plt.xlabel('Frames')
     plt.ylabel('X position')
@@ -507,12 +547,6 @@ def get_running_and_turning_fragments(plottable_people, mean_x_per_person, perso
     plt.ylabel('X position')
     plt.legend().set_visible(False)
 
-    # Add minimum and maximum period/frame of the interval we look at
-    turning_points = sorted(set(turning_points) | set([min_period, max_period]))
-
-    # Derive fragments by only taking fragments for which the start and end frame are a minimum of 10 frames apart
-    fragments = [(i, j) for i, j in zip(turning_points, turning_points[1:]) if j - i > 10]
-
     ### Splitting turning and running motions ###
 
     plottable_people_df.set_index('Period')
@@ -522,6 +556,7 @@ def get_running_and_turning_fragments(plottable_people, mean_x_per_person, perso
     # Individually look at each fragment (this contains parts that are a running motion and parts that are a turning/starting motion)
     # Rationale: Check for maximum change in accelertion by taking minimum/maximum of second derivative
 
+    avg_first_derivative = np.mean(abs(np.diff(ynew)))  # average first derivative
     avg_second_derivative = np.mean(abs(np.diff(np.diff(ynew))))  # average second derivative
 
     for fragment in fragments:
@@ -560,19 +595,19 @@ def get_running_and_turning_fragments(plottable_people, mean_x_per_person, perso
         slow_down_thresh = (2 / 5) * start_up_thresh
 
         if y_sel[0] < y_sel[-1]:
-            min_frame = secondDerivative[secondDerivative.apply(lambda x: 0 < x < start_up_thresh)].index.min()
+            min_frame = secondDerivative[(fragment_series.diff().abs() > avg_first_derivative) & (secondDerivative.apply(lambda x: 0 < x < start_up_thresh))].index.min()
             min_frame = list(map(lambda x: lower_bound if x != x else x, [min_frame]))[0]
 
-            max_frame = secondDerivative[secondDerivative.apply(lambda x: -slow_down_thresh < x < 0)].index.max()
+            max_frame = secondDerivative[(fragment_series.diff().abs() > avg_first_derivative) & (secondDerivative.apply(lambda x: -slow_down_thresh < x < 0))].index.max()
             max_frame = list(map(lambda x: upper_bound if x != x else x, [max_frame]))[0]
 
             turning_frames.append(min_frame)
             turning_frames.append(max_frame)
         else:
-            min_frame = secondDerivative[secondDerivative.apply(lambda x: -start_up_thresh < x < 0)].index.min()
+            min_frame = secondDerivative[(fragment_series.diff().abs() > avg_first_derivative) & (secondDerivative.apply(lambda x: -start_up_thresh < x < 0))].index.min()
             min_frame = list(map(lambda x: lower_bound if x != x else x, [min_frame]))[0]
 
-            max_frame = secondDerivative[secondDerivative.apply(lambda x: 0 < x < slow_down_thresh)].index.max()
+            max_frame = secondDerivative[(fragment_series.diff().abs() > avg_first_derivative) & (secondDerivative.apply(lambda x: 0 < x < slow_down_thresh))].index.max()
             max_frame = list(map(lambda x: upper_bound if x != x else x, [max_frame]))[0]
 
             turning_frames.append(min_frame)
@@ -627,7 +662,7 @@ def get_person_length_in_pixels(person_plottables, length, joint_confidence):
     # z value in the x,y,z coordinate output. Set a threshold to only include fairly certain coords
 
     # find all the coordinates of the person that are not empty and that exceed a set confidence level
-    coord_list = [np.concatenate((np.arange(18).reshape(-1, 1), coords), axis=1)[(~(coords == 0).all(axis=1))
+    coord_list = [np.concatenate((np.arange(18).reshape(-1, 1), coords), axis=1)[(~(coords == 0).any(axis=1))
                                                                                  & (coords[:, 2] > joint_confidence)]
                   for period, person_dictionary in person_plottables.items()
                   for person, coords in person_dictionary.items()]
@@ -664,8 +699,8 @@ def speed_via_length(person_plottables, running_fragments, length, fps, joint_co
         start = int(round(start, 0))
         end = int(round(end, 0))
 
-        start_x = np.nanmean([np.mean(coords[:, 0]) for coords in person_plottables[start].values()])
-        end_x = np.nanmean([np.mean(coords[:, 0]) for coords in person_plottables[end].values()])
+        start_x = np.nanmean([np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in person_plottables[start].values()])
+        end_x = np.nanmean([np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in person_plottables[end].values()])
 
         x_diff = abs(end_x - start_x)
 
@@ -686,8 +721,8 @@ def speed_via_distance(person_plottables, running_fragments, fragments, distance
     bounds = []
 
     for start, end in fragments[1:3]:
-        start_x = np.nanmean([np.mean(coords[:, 0]) for coords in person_plottables[start].values()])
-        end_x = np.nanmean([np.mean(coords[:, 0]) for coords in person_plottables[end].values()])
+        start_x = np.nanmean([np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in person_plottables[start].values()])
+        end_x = np.nanmean([np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in person_plottables[end].values()])
 
         bounds = bounds + [start_x, end_x]
 
@@ -701,11 +736,11 @@ def speed_via_distance(person_plottables, running_fragments, fragments, distance
     speed = []
 
     for start, end in running_fragments:
-        start = int(round(start, 0))
-        end = int(round(end, 0))
+        start = min(person_plottables.keys(), key=lambda x:abs(x-start))
+        end = min(person_plottables.keys(), key=lambda x:abs(x-end))
 
-        start_x = np.nanmean([np.mean(coords[:, 0]) for coords in person_plottables[start].values()])
-        end_x = np.nanmean([np.mean(coords[:, 0]) for coords in person_plottables[end].values()])
+        start_x = np.nanmean([np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in person_plottables[start].values()])
+        end_x = np.nanmean([np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in person_plottables[end].values()])
 
         x_diff = abs(end_x - start_x)
 
