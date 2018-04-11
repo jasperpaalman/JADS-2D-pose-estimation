@@ -21,16 +21,16 @@ class Video:
 
     def to_json(self, location: str = None):
         if location is None:
-            location = "./data/" + self.source + ".json"
+            location = os.path.join("./data/video_data/", self.source + ".json")
 
         json.dump({"people_per_frame": self.people_per_frame,
                    "frame_rate": self.frame_rate,
                    "width": self.width,
                    "height": self.height,
-                   "source": self.source}, location)
+                   "source": self.source}, open(location, 'w'))
 
     @staticmethod
-    def from_json(relative_file_name: str, folder: str = './data/') -> 'Video':
+    def from_json(relative_file_name: str, folder: str = './data/video_data/') -> 'Video':
         data = json.load(os.path.join(folder, relative_file_name))
         return Video(
             data['people_per_frame'],
@@ -40,7 +40,7 @@ class Video:
             data['frame_rate'])
 
     @staticmethod
-    def all_from_json(folder_name: str = 'data/parsed_movies/') -> List['Video']:
+    def all_from_json(folder_name: str = './data/parsed_movies/') -> List['Video']:
         return [
             Video.from_json(os.path.join(folder_name, file))
             for file in os.listdir(folder_name)
@@ -49,7 +49,7 @@ class Video:
 
     @staticmethod
     def from_open_pose_data(openpose_folder: str, video_location: str = None) -> 'Video':
-        source = ''.join(video_location.split('/')[-1].split('.')[:-1])
+        source = ''.join(openpose_folder.split('\\')[-1].split('.')[:-1])
         people_per_frame = get_openpose_output(openpose_folder)
         if video_location:
             width, height, frame_rate = determine_video_meta_data(video_location)
