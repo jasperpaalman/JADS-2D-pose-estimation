@@ -21,7 +21,7 @@ class Video:
 
     def to_json(self, location: str = None):
         if location is None:
-            location = "data/" + self.source + ".json"
+            location = "./data/" + self.source + ".json"
 
         json.dump({"people_per_frame": self.people_per_frame,
                    "frame_rate": self.frame_rate,
@@ -40,7 +40,7 @@ class Video:
             data['frame_rate'])
 
     @staticmethod
-    def all_from_json(folder_name: str = 'data/parsed_movies/'):
+    def all_from_json(folder_name: str = 'data/parsed_movies/') -> List['Video']:
         return [
             Video.from_json(os.path.join(folder_name, file))
             for file in os.listdir(folder_name)
