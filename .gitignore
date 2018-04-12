@@ -7,3 +7,4 @@ coordinates/*
 videos/*
 **/*.json
 *.zip
+openpose/*
