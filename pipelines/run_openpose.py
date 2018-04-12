@@ -1,9 +1,10 @@
 import os
 
+
 def get_list_videos(vid_dir):
     f = []
-    for (dirpath, dirnames, filenames) in os.walk(vid_dir):
-        f.extend(filenames)
+    for (dir_path, dir_names, file_names) in os.walk(vid_dir):
+        f.extend(file_names)
     return f
 
 
