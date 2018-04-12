@@ -2,6 +2,7 @@ import json
 import os
 from typing import List, Dict
 from methods import get_openpose_output, determine_video_meta_data
+from models.config import Config
 
 
 class Video:
@@ -29,7 +30,7 @@ class Video:
         :param location: The location to write to.
         """
         if location is None:
-            location = os.path.join("./data/video_data/", self.source + ".json")
+            location = os.path.join(Config.get_config().video_data, self.source + ".json")
 
         json.dump({"people_per_frame": self.people_per_frame,
                    "frame_rate": self.frame_rate,
@@ -40,7 +41,7 @@ class Video:
     @staticmethod
     def from_json(
             relative_file_name: str,
-            folder: str = './data/video_data/') -> 'Video':
+            folder: str = None) -> 'Video':
         """
         Retreives a serialised Video object
 
@@ -49,6 +50,9 @@ class Video:
         :return: The object that is loaded
         """
         data = json.load(os.path.join(folder, relative_file_name))
+        if folder is None:
+            folder = Config.get_config().video_data
+
         return Video(
             data['people_per_frame'],
             data['source'],
@@ -57,13 +61,17 @@ class Video:
             data['frame_rate'])
 
     @staticmethod
-    def all_from_json(folder_name: str = './data/parsed_movies/') -> List['Video']:
+    def all_from_json(folder_name: str = None) -> List['Video']:
         """
         Loads all Video objects stored in folder_name
 
         :param folder_name: The location to search in
         :return: A list with all the Videos
         """
+
+        if folder_name is None:
+            folder_name = Config.get_config().openpose_output
+
         return [
             Video.from_json(os.path.join(folder_name, file))
             for file in os.listdir(folder_name)

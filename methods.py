@@ -473,7 +473,7 @@ def determine_plottable_people(
 
 def get_running_and_turning_fragments(
         plottable_people: List[int],
-        mean_x_per_person: List,
+        mean_x_per_person: Dict,
         person_plottables_df,
         moving_people,
         fps: float):
