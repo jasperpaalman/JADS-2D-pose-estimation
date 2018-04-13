@@ -689,7 +689,7 @@ def euclidean_pairwise_distance(matrix):
     return pairwise_distances(matrix[0].reshape(1, -1), matrix[1].reshape(1, -1))
 
 
-def get_person_length_in_pixels(person_plottables, length, joint_confidence):
+def get_person_length_in_pixels(person_plottables, joint_confidence=0.5):
     '''Given the provided length of a person and some confidence bound on each joint ('gewricht' in Dutch) returns a measurement
     of a persons length in pixel values.'''
 
@@ -722,7 +722,7 @@ def get_person_length_in_pixels(person_plottables, length, joint_confidence):
 def speed_via_length(person_plottables, running_fragments, length, fps, joint_confidence=0.5):
     '''Returns estimated speed in km/h per running fragment by using provided length as inference measurement.'''
 
-    pixel_length = get_person_length_in_pixels(person_plottables, length, joint_confidence)
+    pixel_length = get_person_length_in_pixels(person_plottables, joint_confidence)
     length_in_meters = length / 100
 
     pixel_length_ratio = length_in_meters / pixel_length
@@ -966,7 +966,7 @@ def reject_outliers(data, m=2):
     """
     return abs(data - np.mean(data)) < m * np.std(data)
 
-def process_coord_df(coord_df):
+def process_coord_df(coord_df, person_plottables):
     """
     Process coord_df by de-trending and removing outliers.
     """
@@ -977,6 +977,11 @@ def process_coord_df(coord_df):
     coord_df["x"], coord_df["y"] = zip(*coord_df[['x', 'y']].apply(lambda d: rotate((d['x'], d['y']), rotation_angle), axis=1))
     # Remove outliers for each joint
     coord_df = coord_df[coord_df.groupby(['Point'])['y'].transform(reject_outliers).astype(bool)]
+
+    pixel_length = np.mean(get_person_length_in_pixels(person_plottables))
+
+    coord_df["x"] = coord_df["x"]/pixel_length
+    coord_df["y"] = coord_df["y"]/pixel_length
 
     return coord_df
 
