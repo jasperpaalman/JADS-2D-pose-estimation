@@ -6,3 +6,6 @@ __pycache__/*
 coordinates/*
 videos/*
 **/*.json
+*.zip
+openpose/*
+data/*
