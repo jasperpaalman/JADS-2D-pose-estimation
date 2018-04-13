@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import time
+import math
 import plotly.graph_objs as go
 import pandas as pd
 
@@ -403,6 +404,8 @@ def iterative_main_traject_finder(person_plottables_df: pd.DataFrame, plottable_
         y.append(dist_point[1])
         plottable_people = plottable_people | {int(dist_point[2])}
 
+    # print(period, best_point, dist_point, euclidean_distances([[period, x_mean]], list(zip(x,y))).min())
+
     return x, y, plottable_people
 
 
@@ -595,19 +598,19 @@ def get_running_and_turning_fragments(plottable_people, mean_x_per_person, perso
         slow_down_thresh = (2 / 5) * start_up_thresh
 
         if y_sel[0] < y_sel[-1]:
-            min_frame = secondDerivative[(fragment_series.diff().abs() > avg_first_derivative) & (secondDerivative.apply(lambda x: 0 < x < start_up_thresh))].index.min()
+            min_frame = secondDerivative[(fragment_series.diff().abs() > avg_first_derivative) & (secondDerivative.apply(lambda x: 0 < x < start_up_thresh))].loc[lower_bound:].index.min()
             min_frame = list(map(lambda x: lower_bound if x != x else x, [min_frame]))[0]
 
-            max_frame = secondDerivative[(fragment_series.diff().abs() > avg_first_derivative) & (secondDerivative.apply(lambda x: -slow_down_thresh < x < 0))].index.max()
+            max_frame = secondDerivative[(fragment_series.diff().abs() > avg_first_derivative) & (secondDerivative.apply(lambda x: -slow_down_thresh < x < 0))].loc[:upper_bound].index.max()
             max_frame = list(map(lambda x: upper_bound if x != x else x, [max_frame]))[0]
 
             turning_frames.append(min_frame)
             turning_frames.append(max_frame)
         else:
-            min_frame = secondDerivative[(fragment_series.diff().abs() > avg_first_derivative) & (secondDerivative.apply(lambda x: -start_up_thresh < x < 0))].index.min()
+            min_frame = secondDerivative[(fragment_series.diff().abs() > avg_first_derivative) & (secondDerivative.apply(lambda x: -start_up_thresh < x < 0))].loc[lower_bound:].index.min()
             min_frame = list(map(lambda x: lower_bound if x != x else x, [min_frame]))[0]
 
-            max_frame = secondDerivative[(fragment_series.diff().abs() > avg_first_derivative) & (secondDerivative.apply(lambda x: 0 < x < slow_down_thresh))].index.max()
+            max_frame = secondDerivative[(fragment_series.diff().abs() > avg_first_derivative) & (secondDerivative.apply(lambda x: 0 < x < slow_down_thresh))].loc[:upper_bound].index.max()
             max_frame = list(map(lambda x: upper_bound if x != x else x, [max_frame]))[0]
 
             turning_frames.append(min_frame)
@@ -829,12 +832,12 @@ def prepare_data_for_plotting(period_person_division, plottable_people, running_
     """
     coord_list = []
     for n, running_fragment in enumerate(running_fragments):
-        coord_list.append([])
+        coord_list.append({})
         for period, period_dictionary in period_person_division.items():
             for person, coords in period_dictionary.items():
                 if person in plottable_people and running_fragment[0] <= period < running_fragment[1]:
                     coord_dict = {key: value for key, value in dict(enumerate(coords[:, :2])).items() if 0 not in value}
-                    coord_list[n].append(coord_dict)
+                    coord_list[n][period] = coord_dict
                     break
     return coord_list
 
@@ -853,8 +856,8 @@ def get_dataframe_from_coords(coord_list):
 
     # More robust way of creating the coord_df
     coord_df = pd.DataFrame(
-        [(n, frame, ix, *coords) for n, coord_list in enumerate(coord_list) for frame, coord_dict in
-         enumerate(coord_list)
+        [(n, frame, ix, *coords) for n, period_dict in enumerate(coord_list) for frame, coord_dict in
+         period_dict.items()
          for ix, coords in coord_dict.items()], columns=['Fragment', 'Frame', 'Point', 'x', 'y'])
 
     # Numeric to name dictionary
@@ -868,26 +871,77 @@ def get_dataframe_from_coords(coord_list):
 
     return coord_df
 
-
-def to_feature_df(coord_df, video_number):
+def angle_between(p1, p2):
     """
-    Gets a DataFrame of coordinates and turns this into features.
-    In this case, the standard deviation of movement vertically. Extension to also horizontally can be easily made in case this helps for discovering speed.
-
-    :param coord_df: A dataframe containing all relevant coördiantes observed in the video.
-
-    :return features_df: returns a dataframe containing standard deviations of all observed coordinates
+    Calculate the clockwise angle between two points. Image drawing two lines from the origin (0,0) to both points and returning the
+    angle between both in degrees.
     """
-    coord_df['video'] = video_number  # needs to be used as itterator in later version for multiple video's
+    ang1 = np.arctan2(*p1[::-1])
+    ang2 = np.arctan2(*p2[::-1])
+    return np.rad2deg((ang1 - ang2) % (2 * np.pi))
 
-    y_df = coord_df.pivot_table(index=['video', 'Fragment'], columns='Point', values='y', aggfunc=np.std)
-    # y_df.columns = [str(col) + '_y' for col in y_df.columns]
-    y_df['video'] = y_df.index
-    feature_df = y_df
+def rotate(point, angle, origin=(0,0)):
+    """
+    Rotate a point counterclockwise by a given angle around a given origin. The angle should be given in degrees.
+    """
+    angle = math.radians(angle)
 
-    return feature_df, coord_df
-    # return y_df
+    ox, oy = origin
+    px, py = point
 
+    qx = ox + math.cos(angle) * (px - ox) - math.sin(angle) * (py - oy)
+    qy = oy + math.sin(angle) * (px - ox) + math.cos(angle) * (py - oy)
+    return qx, qy
+
+def get_rotation_angle(coord_df):
+    """
+    Given the coordinate dataframe with all the running coordinates, this function calculates what the degree to which the video is tilted (trend present).
+    The rotation angle in degrees is returned to allow de-trending.
+    """
+
+    running_coords = coord_df[['x', 'y']].as_matrix()
+
+    x_coords = running_coords[:,0]
+    y_coords = running_coords[:,1]
+
+    # Fit linear line
+    z = np.polyfit(x_coords, y_coords, 1)
+    f = np.poly1d(z)
+
+    # Construct new smooth line using the polynomial function
+    xnew = np.linspace(x_coords.min(), x_coords.max(), num=len(x_coords) * 10, endpoint=True)
+    ynew = f(xnew)
+
+    # Move line over to start at (0,0) and get the rotation_angle
+    xnew_origin = xnew-x_coords.min()
+    if ynew[0] < ynew[-1]:
+        ynew_origin = ynew-ynew.min()
+        rotation_angle = -angle_between((xnew_origin[-1], ynew_origin[-1]), (xnew_origin[-1], 0))
+    else:
+        ynew_origin = ynew-ynew.max()
+        rotation_angle = angle_between((xnew_origin[-1], 0), (xnew_origin[-1], ynew_origin[-1]))
+
+    return rotation_angle
+
+def reject_outliers(data, m=2):
+    """
+    Given an array of values return a boolean array indicating whether each entry is an outlier or not.
+    """
+    return abs(data - np.mean(data)) < m * np.std(data)
+
+def process_coord_df(coord_df):
+    """
+    Process coord_df by de-trending and removing outliers.
+    """
+
+    # Get rotation angle for de-trending
+    rotation_angle = get_rotation_angle(coord_df)
+    # Remove trend by rotating x,y coordinate tuples
+    coord_df["x"], coord_df["y"] = zip(*coord_df[['x', 'y']].apply(lambda d: rotate((d['x'], d['y']), rotation_angle), axis=1))
+    # Remove outliers for each joint
+    coord_df = coord_df[coord_df.groupby(['Point'])['y'].transform(reject_outliers).astype(bool)]
+
+    return coord_df
 
 def forward_leaning(feature_df, coord_df):
     """
@@ -921,12 +975,6 @@ def forward_leaning(feature_df, coord_df):
         # print(temp_sum)
         feature_df.iloc[i, 19] = abs(temp_sum / frame_count)
     return feature_df
-
-
-def angle_between(p1, p2):
-    ang1 = np.arctan2(*p1[::-1])
-    ang2 = np.arctan2(*p2[::-1])
-    return np.rad2deg((ang1 - ang2) % (2 * np.pi))
 
 
 def forward_leaning_angle(coord_df):
@@ -976,6 +1024,53 @@ def forward_leaning_angle(coord_df):
     forward_leaning_per_fragment = [np.mean(forward_leaning_list) for forward_leaning_list in forward_leaning]
 
     return forward_leaning_per_fragment
+
+def to_feature_df(coord_df, video_number):
+    """
+    Gets a DataFrame of coordinates and turns this into features.
+    In this case, the standard deviation of movement vertically. Extension to also horizontally can be easily made in case this helps for discovering speed.
+
+    :param coord_df: A dataframe containing all relevant coördiantes observed in the video.
+
+    :return features_df: returns a dataframe containing standard deviations of all observed coordinates
+    """
+
+    #Set video number
+    coord_df['video'] = video_number
+
+    #extract basic std deviation features of all joints
+    feature_df = coord_df.pivot_table(index=['video', 'Fragment'], columns='Point', values='y', aggfunc=np.std)
+
+    #set video index
+    feature_df['video'] = feature_df.index
+
+    #Add value representing how much (in absoluut values) someone leaned forward
+    feature_df['Forward_leaning'] = forward_leaning_angle(coord_df)
+
+    return feature_df
+
+def get_plottables(period_person_division, plottable_people, running_fragments, turning_fragments):
+    """
+    Function to construct all plottable files. In principle to be used for visualisation.
+    """
+
+    person_plottables = {period:{person: coords for person,
+                      coords in period_dictionary.items() if person in plottable_people}
+                     for period, period_dictionary in period_person_division.items()}
+
+    running_plottables = {period:{person: coords for person, coords in period_dictionary.items() if person in plottable_people}
+                         for period, period_dictionary in period_person_division.items() if
+                          any(lower <= period <= upper for (lower, upper) in running_fragments)}
+
+    turning_plottables = {period:{person: coords for person, coords in period_dictionary.items() if person in plottable_people}
+                         for period, period_dictionary in period_person_division.items() if
+                          any(lower <= period <= upper for (lower, upper) in turning_fragments)}
+
+    person_plottables = dict(filter(lambda x: x[1] != {}, person_plottables.items()))
+    running_plottables = dict(filter(lambda x: x[1] != {}, running_plottables.items()))
+    turning_plottables = dict(filter(lambda x: x[1] != {}, turning_plottables.items()))
+
+    return person_plottables, running_plottables, turning_plottables
 
 
 # Plotly functions to make coördinates more insightfull
