@@ -12,7 +12,10 @@ class Video:
             source: str,
             frame_rate: int = -1,
             width: int = -1,
-            height: int = -1) -> None:
+            height: int = -1,
+            period_person: any = None,
+            running_fragments: any = None) -> None:
+        # TODO find type of period_person and running_fragments
         super().__init__()
 
         self.people_per_frame = people_per_frame
@@ -20,6 +23,8 @@ class Video:
         self.frame_rate = frame_rate
         self.width = width
         self.height = height
+        self.__period_person = period_person
+        self.__running_fragments = running_fragments
 
     def to_json(
             self,
@@ -32,11 +37,15 @@ class Video:
         if location is None:
             location = os.path.join(Config.get_config().video_data, self.source + ".json")
 
-        json.dump({"people_per_frame": self.people_per_frame,
-                   "frame_rate": self.frame_rate,
-                   "width": self.width,
-                   "height": self.height,
-                   "source": self.source}, open(location, 'w'))
+        json.dump({
+            "people_per_frame": self.people_per_frame,
+            "frame_rate": self.frame_rate,
+            "width": self.width,
+            "height": self.height,
+            "source": self.source,
+            "period_person": self.__period_person,
+            "running_fragments": self.__running_fragments
+        }, open(location, 'w'))
 
     @staticmethod
     def from_json(
@@ -58,7 +67,10 @@ class Video:
             data['source'],
             data['width'],
             data['height'],
-            data['frame_rate'])
+            data['frame_rate'],
+            data['period_person'],
+            data['running_fragments']
+        )
 
     @staticmethod
     def all_from_json(folder_name: str = None) -> List['Video']:
@@ -97,3 +109,26 @@ class Video:
             return Video(people_per_frame, source, frame_rate, width, height)
         else:
             return Video(people_per_frame, source)
+
+    def get_period_person(self) -> any:
+        """
+        Calculates the private field period_person is None, and returns
+        # todo: specity return type
+
+        :return: #todo specify what exactly a period_person is
+        """
+        raise NotImplementedError('This method still needs to be implemented')
+        # do logic to set self.__period_person
+        return self.__period_person
+
+
+    def get_running_fragments(self):
+        """
+        Calculates the private field running_fragments is None, and returns
+        # todo: specity return type
+
+        :return: #todo specify what exactly a running_fragments is
+        """
+        raise NotImplementedError('This method still needs to be implemented')
+        # do logic to set self.__period_person
+        return self.__running_fragments
