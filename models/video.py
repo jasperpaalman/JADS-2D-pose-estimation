@@ -1,7 +1,7 @@
 import json
 import os
 from typing import List, Dict
-import methods
+from data_extraction_methods import get_openpose_output, determine_video_meta_data
 from models.config import Config
 
 
@@ -111,9 +111,9 @@ class Video:
         """
 
         source = ''.join(openpose_folder.split('\\')[-1].split('.')[:-1])
-        people_per_frame = methods.get_openpose_output(openpose_folder)
+        people_per_frame = get_openpose_output(openpose_folder)
         if video_location:
-            width, height, frame_rate = methods.determine_video_meta_data(video_location)
+            width, height, frame_rate = determine_video_meta_data(video_location)
             return Video(people_per_frame, source, frame_rate, width, height)
         else:
             return Video(people_per_frame, source)
