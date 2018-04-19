@@ -2,10 +2,10 @@ import json
 
 
 class Config:
-    config: 'Config'
+    config: 'Config' = None
 
     def __init__(self):
-        self.__init__()
+        super().__init__()
         data = json.load(open('config.json'))
         self.openpose_output = data['openpose_output']
         self.video_location = data['video_location']

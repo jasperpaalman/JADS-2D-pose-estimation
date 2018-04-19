@@ -13,7 +13,6 @@ def get_list_videos(vid_dir):
 def run_openpose(video_root, openpose_output_root, openpose_root):
     os.chdir(openpose_root)
     for video in get_list_videos(video_root):
-        # TODO probably should replace line below
         os.system(
             r'bin\OpenPoseDemo.exe --video "{0}\{1}" --write_json "{2}\{1}"'.format(video_root, video,
                                                                                     openpose_output_root))

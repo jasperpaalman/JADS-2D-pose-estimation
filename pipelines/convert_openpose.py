@@ -21,8 +21,11 @@ if __name__ == '__main__':
         # use locations and parse to Video object
         if os.path.exists(video_file):
             video: Video = Video.from_open_pose_data(open_pose_folder, video_file)
+           # video.get_period_person_division()
         else:
             video: Video = Video.from_open_pose_data(open_pose_folder)
+
+
 
         print('finished video: ', folder)
         # Serialise object for later use
