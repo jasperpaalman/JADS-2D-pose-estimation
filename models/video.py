@@ -3,7 +3,6 @@ import os
 from typing import List, Dict
 import methods
 from models.config import Config
-import numpy as np
 
 
 class Video:
