@@ -1,14 +1,16 @@
-from typing import Dict, List
+from itertools import chain
+from typing import Dict
+from numpy import np
+
+import methods
+from data_extraction_methods import determine_rmse_threshold, amount_of_frames_to_look_back, rmse
+from models import Video
 
 
 class Preprocessor:
     def __init__(
             self,
-            source: str,
-            frame_rate: int = -1,
-            width: int = -1,
-            height: int = -1,
-            period_person_division: any = None,
+            video: Video,
             person_period_division: any = None,
             running_fragments: any = None,
             turning_fragments: any = None,
@@ -16,36 +18,33 @@ class Preprocessor:
         # TODO find type of period_person and running_fragments
         super().__init__()
 
-        self.source = source
-        self.frame_rate = frame_rate
-        self.width = width
-        self.height = height
-        self.__period_person_division = period_person_division
+        self.source = video.source
+        self.frame_rate = video.frame_rate
+        self.width = video.width
+        self.height = video.height
+        self.__period_person_division = self.__get_period_person_division(video)
         self.__person_period_division = person_period_division
         self.__running_fragments = running_fragments
         self.__turning_fragments = turning_fragments
         self.__fragments = fragments
 
     @staticmethod
-    def __get_period_person_division(people_per_file: List[List[Dict]], fps: float) \
+    def __get_period_person_division(video: Video) \
             -> Dict[int, Dict[int, any]]:
         """"
+        # todo add method description
 
+        :param video: The video object to get the openpose information from.
 
-        :param fps: number of frames per second in current video
-        :param people_per_file: A list of frames, each frame consists of a list of dictionaries in which
-        all identified people in the video are described using the coordinates of the observed joints.
-
-        :return period_person_division: data strucure containing per frame all persons and their
+        :return period_person_division: data structure containing per frame all persons and their
                                        corresponding coordinates
-
         """
         period_person_division = {}
 
         # used to create a new person when the algorithm can't find a good person fit based on previous x frames
         next_person = 0
 
-        for frame, file in enumerate(people_per_file):
+        for frame, file in enumerate(video.people_per_frame):
             # for a frame (period) make a new dictionary in which to store the identified people
             period_person_division[frame] = {}
 
@@ -72,7 +71,7 @@ class Preprocessor:
                     rmse_threshold = determine_rmse_threshold(person_coords, used_joints)
 
                     # for all possible previous periods within max_frame_diff
-                    for i in range(1, amount_of_frames_to_look_back(fps, frame) + 1):
+                    for i in range(1, amount_of_frames_to_look_back(video.frame_rate, frame) + 1):
                         for earlier_person in period_person_division[frame - i].keys():  # compare with all people
                             if earlier_person not in period_person_division[frame].keys():
                                 # if not already contained in current period
@@ -109,14 +108,13 @@ class Preprocessor:
                                         of that person in that frame.
         """
         person_period_division = {}
-        for person in set(chain.from_iterable(self.period_person_division.values())):
+        for person in set(chain.from_iterable(self.__period_person_division.values())):
             person_period_division[person] = {}
-            for period in self.period_person_division.keys():
-                period_dictionary = self.period_person_division[period]
+            for period in self.__period_person_division.keys():
+                period_dictionary = self.__period_person_division[period]
                 if person in period_dictionary:
                     person_period_division[person][period] = period_dictionary[person]
         return person_period_division
-
 
     def get_period_person_division(self) -> any:
         """
@@ -149,19 +147,21 @@ class Preprocessor:
         moving_people = [key for key, value in normalized_moved_distance_per_person.items() if
                          value > movement_threshold]
 
-        period_running_person_division_df = methods.get_period_running_person_division_df(mean_x_per_person, moving_people)
+        period_running_person_division_df = methods.get_period_running_person_division_df(mean_x_per_person,
+                                                                                          moving_people)
 
         dbscan_subsets = methods.get_dbscan_subsets(maximum_normalized_distance, period_running_person_division_df)
         max_dbscan_subset = dbscan_subsets[
             np.argmax([sum([len(person_period_division[person]) for person in subset]) for subset in dbscan_subsets])]
 
         running_person_identifiers = methods.determine_running_person_identifiers(period_running_person_division_df,
-                                                              max_dbscan_subset,
-                                                              maximum_normalized_distance * 4,
-                                                              maximum_normalized_distance ** 2)
+                                                                                  max_dbscan_subset,
+                                                                                  maximum_normalized_distance * 4,
+                                                                                  maximum_normalized_distance ** 2)
 
         self.__running_fragments, self.__turning_fragments, self.__fragments = \
-            methods.get_running_and_turning_fragments(running_person_identifiers, mean_x_per_person, period_running_person_division_df,
+            methods.get_running_and_turning_fragments(running_person_identifiers, mean_x_per_person,
+                                                      period_running_person_division_df,
                                                       moving_people, self.frame_rate)
 
     def get_running_fragments(self):

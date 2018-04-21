@@ -2,15 +2,13 @@
 A pipeline to load all the openpose output
 """
 import os
+from typing import Sequence
 
 from models import Video
 from models.config import Config
 
-if __name__ == '__main__':
-    # set the local files where the video's and openpose output are stored
-    config = Config.get_config()
 
-    # iterate over the folders in the openpose root folder (where there is a subfolder per video)
+def get_videos(config: Config) -> Sequence[Video]:
     for folder in os.listdir(config.openpose_output):
 
         # Get the sub-folder with openpose data
@@ -20,13 +18,14 @@ if __name__ == '__main__':
 
         # use locations and parse to Video object
         if os.path.exists(video_file):
-            video: Video = Video.from_open_pose_data(open_pose_folder, video_file)
-           # video.get_period_person_division()
+            yield Video.from_open_pose_data(open_pose_folder, video_file)
+        # video.get_period_person_division()
         else:
-            video: Video = Video.from_open_pose_data(open_pose_folder)
-
-
+            yield Video.from_open_pose_data(open_pose_folder)
 
         print('finished video: ', folder)
-        # Serialise object for later use
-        video.to_json()
+
+
+if __name__ == '__main__':
+    # set the local files where the video's and openpose output are stored
+    [video.to_json() for video in get_videos(Config.get_config())]

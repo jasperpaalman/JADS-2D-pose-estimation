@@ -10,16 +10,14 @@ def get_list_videos(vid_dir):
     return f
 
 
-def run_openpose(video_root, openpose_output_root, openpose_root):
-    os.chdir(openpose_root)
-    for video in get_list_videos(video_root):
+def run_openpose(config: Config):
+    os.chdir(config.openpose)
+    for video in get_list_videos(config.video_location):
         os.system(
-            r'bin\OpenPoseDemo.exe --video "{0}\{1}" --write_json "{2}\{1}"'.format(video_root, video,
-                                                                                    openpose_output_root))
+            r'bin\OpenPoseDemo.exe --video "{0}\{1}" --write_json "{2}\{1}"'.format(config.video_location, video,
+                                                                                    config.openpose_output))
 
 
 if __name__ == '__main__':
     # set the local files where the video's and openpose output are stored
-
-    config = Config.get_config()
-    run_openpose(config.video_location, config.openpose_output, config.openpose)
+    run_openpose(Config.get_config())
