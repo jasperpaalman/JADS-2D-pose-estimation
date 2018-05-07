@@ -40,4 +40,4 @@ def run(do_run_openpose: bool = True,
 
 if __name__ == '__main__':
     # change if you don't have the data yet
-    run(False)
+    run(False, False)

@@ -275,8 +275,9 @@ class Preprocessor:
         :return running_person_identifiers:
         """
 
-        period_running_person_division_df: pd.DataFrame = \
-            Preprocessor.determine_running_person_identifiers(mean_x_per_person, moving_people)
+
+        # TODO  JASPER!!!!!!
+        period_running_person_division_df = None # ?
 
         running_person_identifiers = set(max_dbscan_subset)  # set-up plottable people set
 
