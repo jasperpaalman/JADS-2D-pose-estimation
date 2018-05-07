@@ -27,6 +27,7 @@ class Preprocessor:
         self.frame_rate = video.frame_rate
         self.width = video.width
         self.height = video.height
+        self.__moving_people = None
         self.__period_person_division = self.__get_period_person_division(video)
         self.__person_period_division = person_period_division
         self.__running_fragments = running_fragments
@@ -34,6 +35,8 @@ class Preprocessor:
         self.__fragments = fragments
         self.__running_person_identifiers = running_person_identifiers
         self.__mean_x_per_person = None
+
+        # Unserialised
 
     @staticmethod
     def __get_period_person_division(video: Video) \
@@ -60,7 +63,9 @@ class Preprocessor:
                 person_coords = np.array([[x, -y, z] for x, y, z in np.reshape(person['pose_keypoints'], (18, 3))])
 
                 best_person_fit = None  # Initially no best fit person in previous x frames is found
-                if frame == 0:  # frame == 0 means no identified people exist (because first frame), so we need to create them ourselves
+                if frame == 0:
+                    # frame == 0 means no identified people exist (because first frame),
+                    # so we need to create them ourselves
                     period_person_division[frame][
                         next_person] = person_coords  # create new next people since it is the first frame
                     next_person += 1
@@ -68,7 +73,8 @@ class Preprocessor:
                     # set sufficiently high rmse so it will be overwritten easily
                     min_rmse = 1000
 
-                    # we don't want to base any computation on joints that are not present (==0), so we safe those indices that don't
+                    # we don't want to base any computation on joints that are not present (==0),
+                    # so we safe those indices that don't
                     # contain any information
                     empty_joints = set(np.where((person_coords == 0).all(axis=1))[0])
 
@@ -144,13 +150,7 @@ class Preprocessor:
         """
         mean_x_per_person = self.get_mean_x_per_person()
 
-        normalized_moved_distance_per_person = self.normalize_moved_distance_per_person()
-
-        # Only include identified people that move more than a set movement threshold
-        maximum_normalized_distance = max(normalized_moved_distance_per_person.values())
-        movement_threshold = maximum_normalized_distance / 4
-        moving_people = [key for key, value in normalized_moved_distance_per_person.items() if
-                         value > movement_threshold]
+        moving_people = self.get_moving_people()
 
         period_running_person_division_df = self.get_period_running_person_division_df(mean_x_per_person,
                                                                                        moving_people)
@@ -163,6 +163,15 @@ class Preprocessor:
                 mean_x_per_person,
                 period_running_person_division_df,
                 moving_people, self.frame_rate)
+
+    def get_moving_people(self):
+        if self.__moving_people is None:
+            normalized_moved_distance_per_person = self.get_normalize_moved_distance_per_person()
+            maximum_normalized_distance = self.get_maximum_normalized_distance()
+            movement_threshold = maximum_normalized_distance / 4
+            self.__moving_people = [key for key, value in normalized_moved_distance_per_person.items() if
+                                    value > movement_threshold]
+        return self.__moving_people
 
     def get_mean_x_per_person(self) \
             -> Dict[int, Dict[int, float]]:
@@ -209,9 +218,21 @@ class Preprocessor:
 
     def get_running_person_identifiers(self):
         if self.__running_person_identifiers is None:
-            # TODO
+            # TODO set params
+            mnd = self.get_maximum_normalized_distance()
+
+            person = self.get_mean_x_per_person()
+            moving_people = self.get_moving_people()
+
+            period_running_person_division_df = \
+                self.get_period_running_person_division_df(person, moving_people)
+
+            max_dbscan_subsets = self.get_dbscan_subsets(
+                mnd, period_running_person_division_df)
+
             self.__running_person_identifiers = \
-                self.determine_running_person_identifiers(None, None, None, None, None)
+                self.determine_running_person_identifiers(
+                    person, moving_people, max_dbscan_subsets, mnd * 4, mnd ** 2)
 
         return self.__running_person_identifiers
 
@@ -227,6 +248,9 @@ class Preprocessor:
 
         # do logic to set self.__period_person
         return self.__fragments
+
+    def get_maximum_normalized_distance(self):
+        return max(self.get_normalize_moved_distance_per_person().values())
 
     @staticmethod
     def get_period_running_person_division_df(mean_x_per_person: Dict[int, Dict[int, any]],
@@ -271,13 +295,11 @@ class Preprocessor:
         :param max_dbscan_subset:
         :param period_running_person_division_df:
 
-
         :return running_person_identifiers:
         """
 
-
-        # TODO  JASPER!!!!!!
-        period_running_person_division_df = None # ?
+        period_running_person_division_df = self.get_period_running_person_division_df(
+            mean_x_per_person, moving_people)
 
         running_person_identifiers = set(max_dbscan_subset)  # set-up plottable people set
 
@@ -375,7 +397,7 @@ class Preprocessor:
 
         return x, y, running_person_identifiers
 
-    def normalize_moved_distance_per_person(self) -> Dict[int, int]:
+    def get_normalize_moved_distance_per_person(self) -> Dict[int, int]:
         """
         Calculate moved distance by summing the absolute difference over periods
         Normalize moved distance per identified person over frames by including the average frame difference and the length
@@ -387,12 +409,17 @@ class Preprocessor:
         mean_x_per_person = self.get_mean_x_per_person()
 
         normalized_moved_distance_per_person = \
-            {person: pd.Series(mean_x_dict).diff().abs().sum() / (
-                    np.diff(pd.Series(mean_x_dict).index).mean() * len(mean_x_dict))
-             for person, mean_x_dict in mean_x_per_person.items()}
+            {
+                person: pd.Series(mean_x_dict).diff().abs().sum() / (
+                        np.diff(pd.Series(mean_x_dict).index).mean() * len(mean_x_dict)
+                )
+                for person, mean_x_dict in mean_x_per_person.items()
+            }
 
-        return {key: value for key, value in normalized_moved_distance_per_person.items() if
-                value == value}
+        normalized_moved_distance_per_person = {
+            key: value for key, value in normalized_moved_distance_per_person.items() if value == value
+        }
+        return normalized_moved_distance_per_person
 
     @staticmethod
     def get_dbscan_subsets(maximum_normalized_distance: float, period_running_person_division_df: pd.DataFrame):
