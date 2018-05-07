@@ -8,7 +8,6 @@ import time
 import math
 import pandas as pd
 
-import cv2
 from sklearn.cluster import DBSCAN
 
 # pip install .whl file from https://www.lfd.uci.edu/~gohlke/pythonlibs/#opencv

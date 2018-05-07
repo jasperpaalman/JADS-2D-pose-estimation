@@ -59,8 +59,7 @@ class Video:
 
     @staticmethod
     def from_json(
-            relative_file_name: str,
-            folder: str = None) -> 'Video':
+            relative_file_name: str) -> 'Video':
         """
         Retreives a serialised Video object
 
@@ -68,9 +67,7 @@ class Video:
         :param folder: The folder to retrieve from.
         :return: The object that is loaded
         """
-        data = json.load(os.path.join(folder, relative_file_name))
-        if folder is None:
-            folder = Config.get_config().video_data
+        data = json.load(open(relative_file_name))
 
         return Video(
             data['people_per_frame'],
