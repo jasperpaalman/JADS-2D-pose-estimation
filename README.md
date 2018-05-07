@@ -11,7 +11,8 @@ The advised way to setup your repository is as follows:
 - Activate the environment `env\scripts\activate`
 - install packages `pip install -r requirements.txt`
 - Open the config.json file and change jpjrvp
-- download and setup the open_pose library in the same working directory
+- download and setup the open_pose library (version 1.2.1) in the same working directory
+    - Download link: https://github.com/CMU-Perceptual-Computing-Lab/openpose/releases
 
 ## Use
 If you use a virtual environment (which is highly adviced to maintain the correct versions of dependencies) ensure that you also run `env\scripts\activate` every time before you start to code (otherwise your dependencies won't load)
