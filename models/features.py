@@ -8,11 +8,6 @@ from sklearn.metrics.pairwise import pairwise_distances
 
 
 class Features:
-    """
-    TODO implement Features
-
-    TODO implement Serialisation
-    """
 
     def __init__(self, feature_df: DataFrame):
         self.feature_df = feature_df
@@ -29,15 +24,26 @@ class Features:
 
     @staticmethod
     def __get_features(preprocessor: Preprocessor) -> DataFrame:
-        coord_df = Features.get_dataframe_from_coords(preprocessor.get_period_person_division(),
-                                                      # TODO: set other properties
-                                                      )
+        coord_df = Features.get_dataframe_from_coords(
+            preprocessor.get_period_person_division(),
+            preprocessor.get_running_person_identifiers(),
+            preprocessor.get_running_fragments())
 
-        Features.create_total_feature_df(coord_df,
-                                         # TODO: set other properties
-                                         )
+        period_running_person_division, running_plottables, turning_plottables = Features.get_plottables(
+            preprocessor.get_period_person_division(),
+            preprocessor.get_running_person_identifiers(),
+            preprocessor.get_running_fragments(),
+            preprocessor.get_turning_fragments()
+        )
 
-        raise NotImplementedError('todo implement @Features.get_features')
+        Features.create_total_feature_df(
+            coord_df,
+            preprocessor.source,
+            None,
+            period_running_person_division,
+            preprocessor.get_running_fragments(),
+            preprocessor.get_fragments(),
+            preprocessor.frame_rate)
 
     @staticmethod
     def get_coord_list(period_person_division, running_person_identifiers, running_fragments):
@@ -234,7 +240,7 @@ class Features:
         return forward_leaning_per_fragment
 
     @staticmethod
-    def to_feature_df(coord_df, video_number, period_running_person_division, running_fragments, fragments, fps):
+    def to_feature_df(coord_df, source, period_running_person_division, running_fragments, fragments, fps):
         """
         Gets a DataFrame of coordinates and turns this into features.
         In this case, the standard deviation of movement vertically. Extension to also horizontally can be easily made
@@ -246,13 +252,13 @@ class Features:
         """
 
         # Set video number
-        coord_df['video'] = video_number
+        coord_df['source'] = source
 
         # extract basic std deviation features of all joints
         feature_df = coord_df.pivot_table(index=['video', 'Fragment'], columns='Point', values='y', aggfunc=np.std)
 
         # set video index
-        feature_df['video'] = feature_df.index
+        feature_df['source'] = source
 
         # Add value representing how much (in absoluut values) someone leaned forward
         feature_df['Forward_leaning'] = Features.forward_leaning_angle(coord_df)
@@ -264,9 +270,9 @@ class Features:
         return feature_df
 
     @staticmethod
-    def create_total_feature_df(coord_df, video_number, return_df, period_running_person_division, running_fragments,
+    def create_total_feature_df(coord_df, source, return_df, period_running_person_division, running_fragments,
                                 fragments, fps):
-        feature_df = Features.to_feature_df(coord_df, video_number, period_running_person_division, running_fragments,
+        feature_df = Features.to_feature_df(coord_df, source, period_running_person_division, running_fragments,
                                             fragments,
                                             fps)
         if return_df is None:

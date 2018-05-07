@@ -215,7 +215,7 @@ class Preprocessor:
 
         return self.__running_person_identifiers
 
-    def fragments(self):
+    def get_fragments(self):
         """
         Calculates the private field fragments is None, and returns
         # todo: specity return type
