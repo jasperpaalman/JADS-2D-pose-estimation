@@ -26,13 +26,13 @@ def run(do_run_openpose: bool = True,
         videos = Video.all_from_json(config.video_data)
 
     # Convert to usable data type period_running_person division, alle fragment soorten
-    preprocessors = [Preprocessor(video) for video in videos]
+    preprocessors = list([Preprocessor(video) for video in videos])
 
     # feature extraction speed / variation / stepping freq
-    features = [Features.from_preprocessor(preprocessor) for preprocessor in preprocessors]
+    features = list([Features.from_preprocessor(preprocessor) for preprocessor in preprocessors])
 
     # build machine learning model
-    regressor: Regressor = Regressor(list(features), 'speed')
+    regressor: Regressor = Regressor(features, 'speed')
 
     # show output
     print(regressor.evaluate())

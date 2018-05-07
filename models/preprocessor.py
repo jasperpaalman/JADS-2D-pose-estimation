@@ -23,6 +23,9 @@ class Preprocessor:
         # TODO find type of period_person and running_fragments
         super().__init__()
 
+        if video.frame_rate < 1:
+            raise ValueError('video.frame_rate out of bounds "{}"'.format(video.frame_rate))
+
         self.source = video.source
         self.frame_rate = video.frame_rate
         self.width = video.width
