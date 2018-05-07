@@ -29,11 +29,15 @@ class Features:
 
     @staticmethod
     def __get_features(preprocessor: Preprocessor) -> DataFrame:
+        coord_df = Features.get_dataframe_from_coords(preprocessor.get_period_person_division(),
+                                                      # TODO: set other properties
+                                                      )
+
+        Features.create_total_feature_df(coord_df,
+                                         # TODO: set other properties
+                                         )
+
         raise NotImplementedError('todo implement @Features.get_features')
-
-        coord_df = Features.get_dataframe_from_coords(preprocessor.get_period_person_division(), )
-
-        Features.create_total_feature_df(coord_df)
 
     @staticmethod
     def get_coord_list(period_person_division, running_person_identifiers, running_fragments):
@@ -361,7 +365,6 @@ class Features:
             speed.append(fragment_speed)
 
         return speed
-
 
     def speed_via_length(period_running_person_division, running_fragments, length, fps, joint_confidence=0.5):
         """Returns estimated speed in km/h per running fragment by using provided length as inference measurement."""
