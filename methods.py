@@ -247,7 +247,8 @@ def get_running_and_turning_fragments(
 
     # Plot the original dataframe to show the difference between moving_people (incl. noise)
     # and the extract running_person_identifiers
-    pd.DataFrame({key: value for key, value in mean_x_per_person.items() if key in moving_people}).plot()
+    if plot:
+        pd.DataFrame({key: value for key, value in mean_x_per_person.items() if key in moving_people}).plot()
 
     # Retrieve dataframe, but only select plottable people
     running_person_identifiers_df = period_running_person_division_df[
@@ -555,10 +556,10 @@ def plot_person(plottables, image_h, image_w, zoom=True, pad=3, sleep=0):
     """
     f, ax = plt.subplots(figsize=(14, 10))
 
-    y_coords = [coords[~(coords == 0).any(axis=1)][:, 1]
-                for period_dictionary in plottables.values() for coords in period_dictionary.values()]
+    y_coords = np.array([coords[~(coords == 0).any(axis=1)][:,1]
+                for period_dictionary in plottables.values() for coords in period_dictionary.values()])
 
-    y_coords = list(chain.from_iterable(y_coords))
+    y_coords = np.array(list(chain.from_iterable(y_coords)))+image_h
 
     cy = np.mean(y_coords)  # y center
     stdy = np.std(y_coords)  # y standard deviation
@@ -571,8 +572,9 @@ def plot_person(plottables, image_h, image_w, zoom=True, pad=3, sleep=0):
 
         for person in plottables[t].keys():
             plot_coords = plottables[t][person]
+            plot_coords[:,1] = plot_coords[:,1]+image_h
 
-            coord_dict = {key: value for key, value in dict(enumerate(plot_coords[:, :2])).items() if 0 not in value}
+            coord_dict = {key: value for key, value in dict(enumerate(plot_coords[:, :2])).items() if not (value==0).any()}
 
             present_keypoints = set(coord_dict.keys())
 
@@ -591,6 +593,9 @@ def plot_person(plottables, image_h, image_w, zoom=True, pad=3, sleep=0):
             ax.annotate('Frame: {}'.format(t), xy=(0.02, 0.95), xycoords='axes fraction',
                         bbox=dict(facecolor='red', alpha=0.5), fontsize=12)
 
+            ax.set_xlabel('X coordinate')
+            ax.set_ylabel('Y coordinate')
+
             if zoom:
                 ax.set_ylim(cy - stdy * pad, cy + stdy * pad)  # set y-limits by padding around the average center of y
                 xlow, xhigh = ax.get_xlim()  # get x higher and lower limits
@@ -600,7 +605,7 @@ def plot_person(plottables, image_h, image_w, zoom=True, pad=3, sleep=0):
                 ax.set_xlim(xlow - xpad, xhigh + xpad)  # set new limits
             else:
                 ax.set_xlim([0, image_w])
-                ax.set_ylim([-image_h, 0])
+                ax.set_ylim([0, image_h])
 
             f.canvas.draw()
             ax.clear()
