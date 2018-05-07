@@ -36,10 +36,9 @@ class Features:
             preprocessor.get_turning_fragments()
         )
 
-        return Features.create_total_feature_df(
+        return Features.to_feature_df(
             coord_df,
             preprocessor.source,
-            None,
             period_running_person_division,
             preprocessor.get_running_fragments(),
             preprocessor.get_fragments(),
@@ -268,19 +267,6 @@ class Features:
                                                                  fps)
 
         return feature_df
-
-    @staticmethod
-    def create_total_feature_df(coord_df, source, return_df, period_running_person_division, running_fragments,
-                                fragments, fps):
-        feature_df = Features.to_feature_df(coord_df, source, period_running_person_division, running_fragments,
-                                            fragments,
-                                            fps)
-        if return_df is None:
-            return_df = feature_df
-        #         print(return_df)
-        else:
-            return_df = return_df.append(feature_df)
-        return return_df
 
     @staticmethod
     def euclidean_pairwise_distance(matrix):

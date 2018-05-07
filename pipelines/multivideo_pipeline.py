@@ -1,12 +1,15 @@
 # Run openpose
 from typing import Sequence
 
+from pandas import DataFrame
+
 from learning.regressor import Regressor
 from models import Video
 from models.config import Config
 from models.features import Features
 from models.preprocessor import Preprocessor
 from pipelines import run_openpose, convert_openpose
+from functools import reduce
 
 
 def run(do_run_openpose: bool = True,
@@ -30,6 +33,9 @@ def run(do_run_openpose: bool = True,
 
     # feature extraction speed / variation / stepping freq
     features = list([Features.from_preprocessor(preprocessor) for preprocessor in preprocessors])
+
+    dfs: DataFrame = [feature.feature_df for feature in features]
+    reduce(lambda f1, f2: f1.combine(f2), dfs)
 
     # build machine learning model
     regressor: Regressor = Regressor(features, 'speed')
