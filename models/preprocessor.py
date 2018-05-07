@@ -181,11 +181,14 @@ class Preprocessor:
         :param person_period_division:
         :returns: a dictionary
         """
+
+        period_person_division = self.get_period_person_division()
+
         if self.__mean_x_per_person is None:
             self.__mean_x_per_person = {
                 person: {period: np.mean(coords[~(coords == 0).any(axis=1), 0])
                          for period, coords in time_coord_dict.items()}
-                for person, time_coord_dict in self.get_period_person_division().items()
+                for person, time_coord_dict in period_person_division.items()
             }
 
         return self.__mean_x_per_person
