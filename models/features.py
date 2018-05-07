@@ -36,7 +36,7 @@ class Features:
             preprocessor.get_turning_fragments()
         )
 
-        Features.create_total_feature_df(
+        return Features.create_total_feature_df(
             coord_df,
             preprocessor.source,
             None,
