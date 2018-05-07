@@ -2,6 +2,9 @@ import json
 
 
 class Config:
+    """
+    A class used to more easily set all relevant directories for the pipeline
+    """
     config: 'Config' = None
 
     def __init__(self):
