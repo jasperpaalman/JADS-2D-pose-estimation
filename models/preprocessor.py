@@ -185,13 +185,13 @@ class Preprocessor:
         :returns: a dictionary
         """
 
-        period_person_division = self.get_period_person_division()
+        person_period_division = self.get_person_period_division()
 
         if self.__mean_x_per_person is None:
             self.__mean_x_per_person = {
                 person: {period: np.mean(coords[~(coords == 0).any(axis=1), 0])
                          for period, coords in time_coord_dict.items()}
-                for person, time_coord_dict in period_person_division.items()
+                for person, time_coord_dict in person_period_division.items()
             }
 
         return self.__mean_x_per_person
@@ -225,9 +225,9 @@ class Preprocessor:
     def get_running_person_identifiers(self):
         if self.__running_person_identifiers is None:
             # TODO set params
-            mnd = self.get_maximum_normalized_distance()
-
             person = self.get_mean_x_per_person()
+
+            mnd = self.get_maximum_normalized_distance()
             moving_people = self.get_moving_people()
 
             period_running_person_division_df = \
