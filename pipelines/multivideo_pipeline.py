@@ -1,7 +1,8 @@
 # Run openpose
 from typing import Sequence
 
-from pandas import DataFrame
+from pandas import DataFrame, concat
+import time
 
 from learning.regressor import Regressor
 from models import Video
@@ -35,14 +36,9 @@ def run(do_run_openpose: bool = True,
     features = list([Features.from_preprocessor(preprocessor) for preprocessor in preprocessors])
 
     dfs: DataFrame = [feature.feature_df for feature in features]
-    print(reduce(lambda df1, df2: pd.concat([df1, df2], axis=0, ignore_index=True), dfs))
+    final_feature_df = reduce(lambda df1, df2: concat([df1, df2], axis=0, ignore_index=True), dfs)
 
-    # build machine learning model
-    # regressor: Regressor = Regressor(features, 'speed')
-
-    # show output
-    # print(regressor.evaluate())
-
+    final_feature_df.to_csv('final_feature_df {}.csv'.format(time.strftime('%d-%m-%Y')))
 
 if __name__ == '__main__':
     # change if you don't have the data yet

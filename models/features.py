@@ -2,10 +2,12 @@ from pandas import DataFrame
 import numpy as np
 import math
 import pandas as pd
+import warnings
 
 from models.preprocessor import Preprocessor
 from sklearn.metrics.pairwise import pairwise_distances
 
+warnings.filterwarnings('ignore')
 
 class Features:
 
@@ -35,6 +37,8 @@ class Features:
             preprocessor.get_running_fragments(),
             preprocessor.get_turning_fragments()
         )
+
+        print('processed video: ', preprocessor.source)
 
         return Features.to_feature_df(
             coord_df,
