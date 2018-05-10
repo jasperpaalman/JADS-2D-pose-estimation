@@ -22,7 +22,7 @@ class Video:
             self,
             people_per_frame: List[List[Dict]],
             source: str,
-            frame_rate: int = -1,
+            frame_rate: float = -1,
             width: int = -1,
             height: int = -1,
             period_person_division: any = None,
@@ -72,9 +72,9 @@ class Video:
         return Video(
             data['people_per_frame'],
             data['source'],
+            data['frame_rate'],
             data['width'],
-            data['height'],
-            data['frame_rate']
+            data['height']
         )
 
     @staticmethod
@@ -109,8 +109,8 @@ class Video:
 
         source = ''.join(openpose_folder.split('\\')[-1].split('.')[:-1])
         people_per_frame = get_openpose_output(openpose_folder)
-        if video_location:
-            width, height, frame_rate = determine_video_meta_data(video_location)
+        if video_location is not None:
+            height, width, frame_rate = determine_video_meta_data(video_location)
             return Video(people_per_frame, source, frame_rate, width, height)
         else:
             return Video(people_per_frame, source)

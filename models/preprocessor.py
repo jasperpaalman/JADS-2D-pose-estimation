@@ -233,12 +233,11 @@ class Preprocessor:
             period_running_person_division_df = \
                 self.get_period_running_person_division_df(person, moving_people)
 
-            max_dbscan_subsets = self.get_dbscan_subsets(
-                mnd, period_running_person_division_df)
+            max_dbscan_subset = self.get_max_dbscan_subset(mnd, period_running_person_division_df, person)
 
             self.__running_person_identifiers = \
                 self.determine_running_person_identifiers(
-                    person, moving_people, max_dbscan_subsets, mnd * 4, mnd ** 2)
+                    person, moving_people, max_dbscan_subset, mnd * 4, mnd ** 2)
 
         return self.__running_person_identifiers
 
@@ -428,7 +427,8 @@ class Preprocessor:
         return normalized_moved_distance_per_person
 
     @staticmethod
-    def get_dbscan_subsets(maximum_normalized_distance: float, period_running_person_division_df: pd.DataFrame):
+    def get_max_dbscan_subset(maximum_normalized_distance: float, period_running_person_division_df: pd.DataFrame,
+                              person_period_division : Dict[int, Dict[int, any]]):
         """
 
         :param maximum_normalized_distance:
@@ -445,7 +445,10 @@ class Preprocessor:
 
         dbscan_subsets = period_running_person_division_df.groupby('labels')['Person'].unique().tolist()
 
-        return [list(i) for i in dbscan_subsets]
+        max_dbscan_subset = dbscan_subsets[np.argmax(
+            [sum([len(person_period_division[person]) for person in subset]) for subset in dbscan_subsets])]
+
+        return max_dbscan_subset
 
     @staticmethod
     def get_running_and_turning_fragments(

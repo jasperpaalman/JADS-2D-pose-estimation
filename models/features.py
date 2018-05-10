@@ -254,9 +254,9 @@ class Features:
         coord_df['source'] = source
 
         # extract basic std deviation features of all joints
-        feature_df = coord_df.pivot_table(index=['video', 'Fragment'], columns='Point', values='y', aggfunc=np.std)
+        feature_df = coord_df.pivot_table(index=['source', 'Fragment'], columns='Point', values='y', aggfunc=np.std)
 
-        # set video index
+        # # set video index
         feature_df['source'] = source
 
         # Add value representing how much (in absoluut values) someone leaned forward
