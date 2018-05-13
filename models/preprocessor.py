@@ -479,10 +479,10 @@ class Preprocessor:
             Turning fragments indicate the estimated fragments where the person is either slowing down, turning or starting,
             i.e. not solely running
         """
-
-        # Plot the original dataframe to show the difference between moving_people (incl. noise)
-        # and the extract running_person_identifiers
-        pd.DataFrame({key: value for key, value in mean_x_per_person.items() if key in moving_people}).plot()
+        if plot:
+            # Plot the original dataframe to show the difference between moving_people (incl. noise)
+            # and the extract running_person_identifiers
+            pd.DataFrame({key: value for key, value in mean_x_per_person.items() if key in moving_people}).plot()
 
         # Retrieve dataframe, but only select plottable people
         running_person_identifiers_df = period_running_person_division_df[
