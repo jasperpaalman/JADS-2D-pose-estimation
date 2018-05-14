@@ -32,8 +32,6 @@ class Visualisation:
         self.lines = [self.ax.plot([], [])[0] for i in range(len(self.connections))]
         self.annotation = self.ax.annotate('', xy=(0.02, 0.95), xycoords='axes fraction',
                                  bbox=dict(facecolor='red', alpha=0.5), fontsize=12)
-        # Only calculate the ydiff once to get the aspect ratio right, first set to None to perform check
-        self.ydiff = None
 
     def process_data(self, clip_name) -> Preprocessor:
         """
@@ -99,23 +97,21 @@ class Visualisation:
         return tuple(self.lines) + (self.points, self.annotation)
 
     def set_axis_limits(self, plottables, image_h, image_w, zoom, pad):
-        y_coords = np.array([coords[~(coords == 0).any(axis=1)][:, 1]
-                             for period_dictionary in plottables.values() for coords in period_dictionary.values()])
-
-        y_coords = np.array(list(chain.from_iterable(y_coords))) + image_h
-
-        cy = np.mean(y_coords)  # y center
-        stdy = np.std(y_coords)  # y standard deviation
-
-        self.ydiff = stdy * pad * 2  # total range of y
-
         if zoom:
+            y_coords = np.array([coords[~(coords == 0).any(axis=1)][:, 1]
+                                 for period_dictionary in plottables.values() for coords in period_dictionary.values()])
+
+            y_coords = np.array(list(chain.from_iterable(y_coords))) + image_h
+
+            cy = np.mean(y_coords)  # y center
+            stdy = np.std(y_coords)  # y standard deviation
+
+            self.ydiff = stdy * pad * 2  # total range of y
+
             self.ax.set_ylim(cy - stdy * pad, cy + stdy * pad)  # set y-limits by padding around the average center of y
         else:
             self.ax.set_ylim([0, image_h])
             self.ax.set_xlim([0, image_w])
-
-
 
     def plot_person(self, frame, plottables, image_h, image_w, zoom=True, pad=3):
         """
@@ -186,11 +182,6 @@ class Visualisation:
         running_fragments = preprocessor.get_running_fragments()
         turning_fragments = preprocessor.get_turning_fragments()
 
-        coord_df = Features.get_dataframe_from_coords(
-            preprocessor.get_period_person_division(),
-            preprocessor.get_running_person_identifiers(),
-            preprocessor.get_running_fragments())
-
         period_running_person_division, running_plottables, turning_plottables = self.get_plottables(period_person_division, running_person_identifiers, running_fragments, turning_fragments)
 
         if fragment == 'run':
@@ -208,5 +199,5 @@ class Visualisation:
 
 if __name__ == '__main__':
     visualisation = Visualisation()
-    visualisation.run_animation(clip_name='20180404_182019.mp4', fragment='run', zoom=True, pad=3, interval=100)
+    visualisation.run_animation(clip_name='jeroenkrol_28121995_184_80_16500.mp4', fragment='run', zoom=True, pad=3, interval=100)
 
