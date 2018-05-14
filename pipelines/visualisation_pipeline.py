@@ -109,6 +109,9 @@ class Visualisation:
             self.ydiff = stdy * pad * 2  # total range of y
 
             self.ax.set_ylim(cy - stdy * pad, cy + stdy * pad)  # set y-limits by padding around the average center of y
+
+            self.ax.set_xticks([])
+            self.ax.set_yticks([])
         else:
             self.ax.set_ylim([0, image_h])
             self.ax.set_xlim([0, image_w])
