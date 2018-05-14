@@ -98,7 +98,26 @@ class Visualisation:
 
         return tuple(self.lines) + (self.points, self.annotation)
 
-    def plot_person(self, frame, frame_to_index, plottables, image_h, image_w, zoom=True, pad=3):
+    def set_axis_limits(self, plottables, image_h, image_w, zoom, pad):
+        y_coords = np.array([coords[~(coords == 0).any(axis=1)][:, 1]
+                             for period_dictionary in plottables.values() for coords in period_dictionary.values()])
+
+        y_coords = np.array(list(chain.from_iterable(y_coords))) + image_h
+
+        cy = np.mean(y_coords)  # y center
+        stdy = np.std(y_coords)  # y standard deviation
+
+        self.ydiff = stdy * pad * 2  # total range of y
+
+        if zoom:
+            self.ax.set_ylim(cy - stdy * pad, cy + stdy * pad)  # set y-limits by padding around the average center of y
+        else:
+            self.ax.set_ylim([0, image_h])
+            self.ax.set_xlim([0, image_w])
+
+
+
+    def plot_person(self, frame, plottables, image_h, image_w, zoom=True, pad=3):
         """
         Function that is used by matplotlib.animation.FuncAnimation to iteratively plot given a frame
         :param frame: Frame to plot
@@ -110,26 +129,6 @@ class Visualisation:
         :param pad: Float/integer indicating what the padded region around the animated person should be
         :return: Tuple with all plottable objects
         """
-
-        index = frame_to_index[frame]
-
-        if self.ydiff is None:
-            y_coords = np.array([coords[~(coords == 0).any(axis=1)][:, 1]
-                                 for period_dictionary in plottables.values() for coords in period_dictionary.values()])
-
-            y_coords = np.array(list(chain.from_iterable(y_coords))) + image_h
-
-            cy = np.mean(y_coords)  # y center
-            stdy = np.std(y_coords)  # y standard deviation
-
-            self.ydiff = stdy * pad * 2  # total range of y
-
-        if index == 0:
-            if zoom:
-                self.ax.set_ylim(cy - stdy * pad, cy + stdy * pad)  # set y-limits by padding around the average center of y
-            else:
-                self.ax.set_ylim([0, image_h])
-                self.ax.set_xlim([0, image_w])
 
         for person in plottables[frame].keys():
             plot_coords = plottables[frame][person]
@@ -199,15 +198,15 @@ class Visualisation:
         elif fragment == 'turn':
             plottables = turning_plottables
         else:
-            plottables = period_running_person_division
+            plottables = period_running_person_divisio
 
-        frame_to_index = {frame: index for index, frame in enumerate(plottables.keys())}
+        self.set_axis_limits(plottables, preprocessor.height, preprocessor.width, zoom=zoom, pad=pad)
 
-        animate = animation.FuncAnimation(fig=self.fig, func=self.plot_person, frames=plottables.keys(), fargs=(frame_to_index, plottables,
+        animate = animation.FuncAnimation(fig=self.fig, func=self.plot_person, frames=plottables.keys(), fargs=(plottables,
                         preprocessor.height, preprocessor.width, zoom, pad), interval=interval, init_func=self.func_init, blit=True, repeat=False)
         plt.show()
 
 if __name__ == '__main__':
     visualisation = Visualisation()
-    visualisation.run_animation(clip_name='jeroenkrol_28121995_184_80_16500.mp4', fragment='run', zoom=True, pad=3, interval=100)
+    visualisation.run_animation(clip_name='20180404_182019.mp4', fragment='run', zoom=True, pad=3, interval=100)
 
