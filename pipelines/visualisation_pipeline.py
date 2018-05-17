@@ -110,8 +110,8 @@ class Visualisation:
 
             self.ax.set_ylim(cy - stdy * pad, cy + stdy * pad)  # set y-limits by padding around the average center of y
 
-            self.ax.set_xticks([])
-            self.ax.set_yticks([])
+            # self.ax.set_xticks([])
+            # self.ax.set_yticks([])
         else:
             self.ax.set_ylim([0, image_h])
             self.ax.set_xlim([0, image_w])
@@ -197,7 +197,7 @@ class Visualisation:
         self.set_axis_limits(plottables, preprocessor.height, preprocessor.width, zoom=zoom, pad=pad)
 
         animate = animation.FuncAnimation(fig=self.fig, func=self.plot_person, frames=plottables.keys(), fargs=(plottables,
-                        preprocessor.height, preprocessor.width, zoom, pad), interval=interval, init_func=self.func_init, blit=True, repeat=False)
+                        preprocessor.height, preprocessor.width, zoom, pad), interval=interval, init_func=self.func_init, blit=False, repeat=False)
         plt.show()
 
 if __name__ == '__main__':
