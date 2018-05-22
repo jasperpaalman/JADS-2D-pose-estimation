@@ -9,6 +9,11 @@ from models.config import Config
 
 
 def get_videos(config: Config) -> Sequence[Video]:
+    """
+    Run openpose for all videos in the video_location folder and write output to json
+
+    :param config: Instance of the Config class where the paths can be found
+    """
     for folder in os.listdir(config.openpose_output):
 
         # Get the sub-folder with openpose data

@@ -8,7 +8,6 @@ from itertools import chain
 from models.config import Config
 from models.video import Video
 from models.preprocessor import Preprocessor
-from models.features import Features
 
 warnings.filterwarnings('ignore')
 
@@ -180,7 +179,7 @@ class Visualisation:
 
         preprocessor = self.process_data(clip_name)
 
-        period_person_division = preprocessor.get_period_person_division()
+        period_person_division = preprocessor.period_person_division
         running_person_identifiers = preprocessor.get_running_person_identifiers()
         running_fragments = preprocessor.get_running_fragments()
         turning_fragments = preprocessor.get_turning_fragments()
@@ -192,7 +191,7 @@ class Visualisation:
         elif fragment == 'turn':
             plottables = turning_plottables
         else:
-            plottables = period_running_person_divisio
+            plottables = period_running_person_division
 
         self.set_axis_limits(plottables, preprocessor.height, preprocessor.width, zoom=zoom, pad=pad)
 
