@@ -10,7 +10,6 @@ from models import Video
 
 from matplotlib import pyplot as plt
 
-
 class Preprocessor:
     def __init__(
             self,
@@ -20,7 +19,6 @@ class Preprocessor:
             turning_fragments: any = None,
             fragments: any = None,
             running_person_identifiers: any = None) -> None:
-        # TODO find type of period_person and running_fragments
         super().__init__()
 
         if video.frame_rate < 1:
@@ -39,13 +37,14 @@ class Preprocessor:
         self.__running_person_identifiers = running_person_identifiers
         self.__mean_x_per_person = None
 
-        # Unserialised
-
     @staticmethod
     def __get_period_person_division(video: Video) \
             -> Dict[int, Dict[int, any]]:
-        """"
-        # todo add method description
+        """
+        Uses the openpose output with the aim to relate output across frames to each other, the goal being
+        to find coordinates that belong to the same person. This is a step that connects those points and
+        groups them under the entity known as a 'person'. In the end the running person is made up of more
+        'persons', since the first step that is taken in this function is not yet perfect.
 
         :param video: The video object to get the openpose information from.
 
@@ -118,8 +117,10 @@ class Preprocessor:
             -> Dict[int, Dict[int, any]]:
         """
         Function that reverses the indexing in the dictionary
+
         :param period_person_division: data strucure containing per frame all persons and their
                                        corresponding coordinates
+
         :return person_period_division: data structure containing per person all frames and the coordinates
                                         of that person in that frame.
         """
@@ -132,42 +133,40 @@ class Preprocessor:
                     person_period_division[person][period] = period_dictionary[person]
         return person_period_division
 
-    def get_period_person_division(self) -> any:
-        """
-        Calculates the private field period_person is None, and returns
-        # todo: specity return type
-
-        :return: #todo specify what exactly a period_person is
-        """
-        if self.__period_person_division is None:
-            self.__period_person_division = self.__get_period_person_division(self.people_per_frame, self.frame_rate)
-
-        # do logic to set self.__period_person
-        return self.__period_person_division
-
     def __set_fragment_sets(self):
         """
         Gets (ready to store) the relevant fragment sets.
-        Copied from Pipeline_new.ipynb
-        # todo cleanup work
+
+        :return: None
         """
+        # Get mean_x per person per period (average over all non-empty joints)
         mean_x_per_person = self.get_mean_x_per_person()
 
+        # Get all persons that are moving (exceed movement threshold)
         moving_people = self.get_moving_people()
 
-        period_running_person_division_df = self.get_period_running_person_division_df(mean_x_per_person,
-                                                                                       moving_people)
+        # Get a DataFrame with all the information of all moving people
+        moving_people_df = self.get_moving_people_df(mean_x_per_person, moving_people)
 
+        # Get the identifiers of all running people
         running_person_identifiers = self.get_running_person_identifiers()
 
+        # Get and set all fragments
         self.__running_fragments, self.__turning_fragments, self.__fragments = \
             Preprocessor.get_running_and_turning_fragments(
                 running_person_identifiers,
                 mean_x_per_person,
-                period_running_person_division_df,
+                moving_people_df,
                 moving_people, self.frame_rate)
 
     def get_moving_people(self):
+        """
+        Get normalized moved distance per person and based on this determine what people are moving in the
+        current video
+
+        :return: List with the identifiers of all moving people
+        """
+
         if self.__moving_people is None:
             normalized_moved_distance_per_person = self.get_normalize_moved_distance_per_person()
             maximum_normalized_distance = self.get_maximum_normalized_distance()
@@ -181,7 +180,8 @@ class Preprocessor:
         """
         Calculate the mean x-position of a person in a certain period
 
-        :param person_period_division:
+        :param person_period_division: data structure containing per person all frames and the coordinates
+                                        of that person in that frame.
         :returns: a dictionary
         """
 
@@ -230,10 +230,10 @@ class Preprocessor:
             mnd = self.get_maximum_normalized_distance()
             moving_people = self.get_moving_people()
 
-            period_running_person_division_df = \
-                self.get_period_running_person_division_df(person, moving_people)
+            moving_people_df = \
+                self.get_moving_people_df(person, moving_people)
 
-            max_dbscan_subset = self.get_max_dbscan_subset(mnd, period_running_person_division_df, person)
+            max_dbscan_subset = self.get_max_dbscan_subset(mnd, moving_people_df, person)
 
             self.__running_person_identifiers = \
                 self.determine_running_person_identifiers(
@@ -258,7 +258,7 @@ class Preprocessor:
         return max(self.get_normalize_moved_distance_per_person().values())
 
     @staticmethod
-    def get_period_running_person_division_df(mean_x_per_person: Dict[int, Dict[int, any]],
+    def get_moving_people_df(mean_x_per_person: Dict[int, Dict[int, any]],
                                               moving_people: List[int]) -> pd.DataFrame:
         """
         Finding person under observation based on clustering with DBSCAN
@@ -298,54 +298,54 @@ class Preprocessor:
         :param max_dist:
         :param max_rmse:
         :param max_dbscan_subset:
-        :param period_running_person_division_df:
+        :param moving_people_df:
 
         :return running_person_identifiers:
         """
 
-        period_running_person_division_df = self.get_period_running_person_division_df(
+        moving_people_df = self.get_moving_people_df(
             mean_x_per_person, moving_people)
 
         running_person_identifiers = set(max_dbscan_subset)  # set-up plottable people set
 
         # Make a selection of the dataframe that is contained within the current initial region
-        df_sel = period_running_person_division_df[
-            period_running_person_division_df['Person'].isin(max_dbscan_subset)].sort_values('Period')
+        df_sel = moving_people_df[
+            moving_people_df['Person'].isin(max_dbscan_subset)].sort_values('Period')
 
         x = df_sel['Period'].tolist()  # starting x list
         y = df_sel['X mean'].tolist()  # starting y list
 
         # Region lower and upper bound
         region_lower_bound = \
-            period_running_person_division_df[period_running_person_division_df['Person'] == min(max_dbscan_subset)][
+            moving_people_df[moving_people_df['Person'] == min(max_dbscan_subset)][
                 'Period'].min()
         region_upper_bound = \
-            period_running_person_division_df[period_running_person_division_df['Person'] == max(max_dbscan_subset)][
+            moving_people_df[moving_people_df['Person'] == max(max_dbscan_subset)][
                 'Period'].max()
 
         # Determine lower and upper periods to cover
-        lower_periods = set(range(period_running_person_division_df['Period'].min(), region_lower_bound)) & set(
-            period_running_person_division_df['Period'])
-        upper_periods = set(range(region_upper_bound + 1, period_running_person_division_df['Period'].max())) & set(
-            period_running_person_division_df['Period'])
+        lower_periods = set(range(moving_people_df['Period'].min(), region_lower_bound)) & set(
+            moving_people_df['Period'])
+        upper_periods = set(range(region_upper_bound + 1, moving_people_df['Period'].max())) & set(
+            moving_people_df['Period'])
 
         for period in upper_periods:
             x, y, running_person_identifiers = \
-                Preprocessor.iterative_main_traject_finder(period_running_person_division_df,
+                Preprocessor.iterative_main_traject_finder(moving_people_df,
                                                            running_person_identifiers, period, x,
                                                            y,
                                                            max_rmse, max_dist)
 
         for period in list(lower_periods)[::-1]:
             x, y, running_person_identifiers = \
-                Preprocessor.iterative_main_traject_finder(period_running_person_division_df,
+                Preprocessor.iterative_main_traject_finder(moving_people_df,
                                                            running_person_identifiers, period, x,
                                                            y,
                                                            max_rmse, max_dist)
 
         return running_person_identifiers
 
-    def iterative_main_traject_finder(period_running_person_division_df: pd.DataFrame,
+    def iterative_main_traject_finder(moving_people_df: pd.DataFrame,
                                       running_person_identifiers: any,
                                       period: int,
                                       x: List,
@@ -360,7 +360,7 @@ class Preprocessor:
         TODO: improve type notation for x, y and define purpose of parameters (define type of plottable people)
 
         :param max_dist:
-        :param period_running_person_division_df:
+        :param moving_people_df:
         :param running_person_identifiers:
         :param period:
         :param x:
@@ -376,7 +376,7 @@ class Preprocessor:
         f = np.poly1d(z)
 
         # retrieve values that belong to this period (can contain more than one point, when noise is present)
-        period_selection = period_running_person_division_df[period_running_person_division_df['Period'] == period][
+        period_selection = moving_people_df[moving_people_df['Period'] == period][
             ['Period', 'Person', 'X mean']].values
 
         # for each of these points check the RMSE
@@ -427,23 +427,23 @@ class Preprocessor:
         return normalized_moved_distance_per_person
 
     @staticmethod
-    def get_max_dbscan_subset(maximum_normalized_distance: float, period_running_person_division_df: pd.DataFrame,
+    def get_max_dbscan_subset(maximum_normalized_distance: float, moving_people_df: pd.DataFrame,
                               person_period_division : Dict[int, Dict[int, any]]):
         """
 
         :param maximum_normalized_distance:
-        :param period_running_person_division_df:
+        :param moving_people_df:
         :return:
         """
         db = DBSCAN(eps=maximum_normalized_distance, min_samples=1)
 
-        db.fit(period_running_person_division_df[['Period', 'X mean']])
+        db.fit(moving_people_df[['Period', 'X mean']])
 
-        period_running_person_division_df['labels'] = db.labels_
+        moving_people_df['labels'] = db.labels_
 
-        # maximum_label = period_running_person_division_df.groupby('labels').apply(len).sort_values(ascending=False).index[0]
+        # maximum_label = moving_people_df.groupby('labels').apply(len).sort_values(ascending=False).index[0]
 
-        dbscan_subsets = period_running_person_division_df.groupby('labels')['Person'].unique().tolist()
+        dbscan_subsets = moving_people_df.groupby('labels')['Person'].unique().tolist()
 
         max_dbscan_subset = dbscan_subsets[np.argmax(
             [sum([len(person_period_division[person]) for person in subset]) for subset in dbscan_subsets])]
@@ -454,7 +454,7 @@ class Preprocessor:
     def get_running_and_turning_fragments(
             running_person_identifiers: List[int],
             mean_x_per_person: Dict,
-            period_running_person_division_df,
+            moving_people_df,
             moving_people,
             fps: float,
             plot: bool = False):
@@ -468,7 +468,7 @@ class Preprocessor:
         :param fps: The frame rate of the video
         :param running_person_identifiers: The indices of identified 'people' that belong to the running person
         :param mean_x_per_person: Mean x-position of a person in a certain period (average over all joints)
-        :param period_running_person_division_df: Dataframe that contains plottable information for all moving people
+        :param moving_people_df: Dataframe that contains plottable information for all moving people
             (running person + noise)
         :param moving_people: All 'people' that have a normalized moved distance that exceeds a set threshold.
             Contains the running person and possibly noise.
@@ -485,8 +485,8 @@ class Preprocessor:
             pd.DataFrame({key: value for key, value in mean_x_per_person.items() if key in moving_people}).plot()
 
         # Retrieve dataframe, but only select plottable people
-        running_person_identifiers_df = period_running_person_division_df[
-            period_running_person_division_df['Person'].isin(running_person_identifiers)].sort_values(
+        running_person_identifiers_df = moving_people_df[
+            moving_people_df['Person'].isin(running_person_identifiers)].sort_values(
             'Period')
 
         x = running_person_identifiers_df['Period'].values

@@ -72,14 +72,15 @@ class Features:
         """
         coord_list = []
         for n, running_fragment in enumerate(running_fragments):
-            coord_list.append({})
-            for period, period_dictionary in period_person_division.items():
-                for person, coords in period_dictionary.items():
+            coord_list.append({})  # Instantiate dictionary
+            for period, person_dictionary in period_person_division.items():
+                for person, coords in person_dictionary.items():
                     if person in running_person_identifiers and running_fragment[0] <= period < running_fragment[1]:
+                        # Enumerate all (x,y) combinations following the indices of joints from Openpose and create dict
                         coord_dict = {key: value for key, value in dict(enumerate(coords[:, :2])).items() if
                                       0 not in value}
-                        coord_list[n][period] = coord_dict
-                        break
+                        coord_list[n][period] = coord_dict  # Add coord_dict to the right fragment and the right period
+                        break  # break to only keep one person per frame
         return coord_list
 
     @staticmethod
@@ -350,8 +351,6 @@ class Features:
         :return: Returns the length of the person under observation in pixels
         """
 
-        # z value in the x,y,z coordinate output. Set a threshold to only include fairly certain coords
-
         # find all the coordinates of the person that are not empty and that exceed a set confidence level
         coord_list = [np.concatenate((np.arange(18).reshape(-1, 1), coords), axis=1)[(~(coords == 0).any(axis=1))
                                                                                      & (coords[:,
@@ -373,7 +372,7 @@ class Features:
             connection_lengths.append(connection_length)
 
         pixel_length = connection_lengths[0] + sum([np.mean([connection_lengths[i], connection_lengths[i + 1]])
-                                                    for i in range(len(connections))[1::2]])
+                    for i in range(len(connections))[1::2]])  # mean used to average right and left estimations
 
         return pixel_length
 
@@ -394,10 +393,12 @@ class Features:
 
         distance_in_meters = distance / 1000
 
+        # get lower_bound turning point using second fragment
         lower_bound = np.nanmean(
             [np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in
              period_running_person_division[fragments[1][0]].values()])
 
+        # get upper_bound turning point using second fragment
         upper_bound = np.nanmean(
             [np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in
              period_running_person_division[fragments[1][1]].values()])
@@ -409,19 +410,19 @@ class Features:
         speed = []
 
         for start, end in running_fragments:
-            start = min(period_running_person_division.keys(), key=lambda x: abs(x - start))
-            end = min(period_running_person_division.keys(), key=lambda x: abs(x - end))
+            start = min(period_running_person_division.keys(), key=lambda x: abs(x - start))  # find start frame
+            end = min(period_running_person_division.keys(), key=lambda x: abs(x - end))  # find end frame
 
             start_x = np.nanmean(
                 [np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in
-                 period_running_person_division[start].values()])
+                 period_running_person_division[start].values()])  # find start mean x
             end_x = np.nanmean(
                 [np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in
-                 period_running_person_division[end].values()])
+                 period_running_person_division[end].values()])  # find end mean x
 
             x_diff = abs(end_x - start_x)
 
-            meters_diff = pixel_distance_ratio * x_diff
+            meters_diff = pixel_distance_ratio * x_diff  # to meters
 
             fragment_speed = meters_diff / ((end - start) / fps) * 3.6
 
@@ -453,15 +454,15 @@ class Features:
         speed = []
 
         for start, end in running_fragments:
-            start = min(period_running_person_division.keys(), key=lambda x: abs(x - start))
-            end = min(period_running_person_division.keys(), key=lambda x: abs(x - end))
+            start = min(period_running_person_division.keys(), key=lambda x: abs(x - start))  # find start frame
+            end = min(period_running_person_division.keys(), key=lambda x: abs(x - end))  # find end frame
 
             start_x = np.nanmean(
                 [np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in
-                 period_running_person_division[start].values()])
+                 period_running_person_division[start].values()])  # find start mean x
             end_x = np.nanmean(
                 [np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in
-                 period_running_person_division[end].values()])
+                 period_running_person_division[end].values()])  # find end mean x
 
             x_diff = abs(end_x - start_x)
 
