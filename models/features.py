@@ -38,15 +38,17 @@ class Features:
             preprocessor.get_turning_fragments()
         )
 
-        print('processed video: ', preprocessor.source)
-
-        return Features.to_feature_df(
+        feature_df = Features.to_feature_df(
             coord_df,
             preprocessor.source,
             period_running_person_division,
             preprocessor.get_running_fragments(),
             preprocessor.get_fragments(),
             preprocessor.frame_rate)
+
+        print('processed video: ', preprocessor.source)
+
+        return feature_df
 
     @staticmethod
     def get_coord_list(period_person_division, running_person_identifiers, running_fragments):
@@ -320,20 +322,13 @@ class Features:
 
         distance_in_meters = distance / 1000
 
-        bounds = []
+        lower_bound = np.nanmean(
+            [np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in
+             period_running_person_division[fragments[1][0]].values()])
 
-        for start, end in fragments[1:3]:
-            start_x = np.nanmean(
-                [np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in
-                 period_running_person_division[start].values()])
-            end_x = np.nanmean(
-                [np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in
-                 period_running_person_division[end].values()])
-
-            bounds = bounds + [start_x, end_x]
-
-        lower_bound = min(bounds)
-        upper_bound = max(bounds)
+        upper_bound = np.nanmean(
+            [np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in
+             period_running_person_division[fragments[1][1]].values()])
 
         pixel_distance = upper_bound - lower_bound
 

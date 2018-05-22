@@ -171,7 +171,7 @@ class Preprocessor:
         if self.__moving_people is None:
             normalized_moved_distance_per_person = self.get_normalize_moved_distance_per_person()
             maximum_normalized_distance = self.get_maximum_normalized_distance()
-            movement_threshold = maximum_normalized_distance / 6
+            movement_threshold = maximum_normalized_distance / 8
             self.__moving_people = [key for key, value in normalized_moved_distance_per_person.items() if
                                     value > movement_threshold]
         return self.__moving_people

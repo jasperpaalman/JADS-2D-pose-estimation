@@ -13,13 +13,11 @@ def get_list_videos(vid_dir):
 def run_openpose(config: Config):
     wd = os.getcwd()
     os.chdir(config.openpose)
-    print('test1')
     for video in get_list_videos(config.video_location):
         os.system(
             r'bin\OpenPoseDemo.exe --video "{0}\{1}" --write_json "{2}\{1}"'.format(config.video_location, video,
                                                                                     config.openpose_output))
     os.chdir(wd)
-
 
 
 if __name__ == '__main__':

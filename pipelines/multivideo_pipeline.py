@@ -4,7 +4,6 @@ from typing import Sequence
 from pandas import DataFrame, concat
 import time
 
-from learning.regressor import Regressor
 from models import Video
 from models.config import Config
 from models.features import Features
