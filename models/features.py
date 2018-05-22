@@ -34,12 +34,12 @@ class Features:
         :return: Dataframe containing all features for this video
         """
         coord_df = Features.get_dataframe_from_coords(
-            preprocessor.get_period_person_division(),
+            preprocessor.period_person_division,
             preprocessor.get_running_person_identifiers(),
             preprocessor.get_running_fragments())
 
         period_running_person_division, running_plottables, turning_plottables = Features.get_plottables(
-            preprocessor.get_period_person_division(),
+            preprocessor.period_person_division,
             preprocessor.get_running_person_identifiers(),
             preprocessor.get_running_fragments(),
             preprocessor.get_turning_fragments()
@@ -403,7 +403,7 @@ class Features:
             [np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in
              period_running_person_division[fragments[1][1]].values()])
 
-        pixel_distance = upper_bound - lower_bound
+        pixel_distance = abs(upper_bound - lower_bound)
 
         pixel_distance_ratio = distance_in_meters / pixel_distance
 

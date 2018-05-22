@@ -7,7 +7,7 @@ The code for the website is hosted at [Luttik / pro coach for all](https://githu
 The advised way to setup your repository is as follows:
 
 - Clone this repo with `git clone` or your git GUI
-- Create a new virtual environment in working directory `virtualenv env` (if virualenv is not installed run 
+- Create a new virtual environment in working directory `virtualenv env` with python version 3.6 (if virualenv is not installed run
 `pip install virtualenv` for more information look [here](http://docs.python-guide.org/en/latest/dev/virtualenvs/#lower-level-virtualenv))
 - Activate the environment `env\scripts\activate`
 - install packages `pip install -r requirements.txt`

@@ -7,16 +7,7 @@ from models.config import Config
 
 class Video:
     """
-    A class used to more easily get all kinds of data from the openpose output
-    Has option to serialise data.
-
-    TODO add type annotation for missing type definitions
-
-    TODO prune irrelevant data types
-
-    TODO split up:
-        if some data is enough to stand on its own (for instance all the data used to actually analyse a person
-        We should create another data type (e.g. a class Runner) to store and handle that data.
+    A class used to more easily get all kinds of data from the Openpose output. Has option to serialise data.
     """
     def __init__(
             self,
@@ -24,12 +15,7 @@ class Video:
             source: str,
             frame_rate: float = -1,
             width: int = -1,
-            height: int = -1,
-            period_person_division: any = None,
-            running_fragments: any = None,
-            turning_fragments: any = None,
-            fragments: any = None) -> None:
-        # TODO find type of period_person and running_fragments
+            height: int = -1) -> None:
         super().__init__()
 
         self.people_per_frame = people_per_frame
@@ -61,7 +47,7 @@ class Video:
     def from_json(
             relative_file_name: str) -> 'Video':
         """
-        Retreives a serialised Video object
+        Retrieves a serialised Video object
 
         :param relative_file_name: The file to retrieve from
         :param folder: The folder to retrieve from.
