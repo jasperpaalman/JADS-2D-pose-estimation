@@ -60,7 +60,7 @@ def normalize_moved_distance_per_person(mean_x_per_person: Dict[int, Dict[int, a
             value == value}
 
 
-def get_period_running_person_division_df(mean_x_per_person: Dict[int, Dict[int, any]],
+def get_moving_people_df(mean_x_per_person: Dict[int, Dict[int, any]],
                                           moving_people: List[int]) -> pd.DataFrame:
     """
     Finding person under observation based on clustering with DBSCAN
@@ -74,27 +74,27 @@ def get_period_running_person_division_df(mean_x_per_person: Dict[int, Dict[int,
          for period, x in period_dict.items()], columns=['Period', 'Person', 'X mean'])
 
 
-def get_dbscan_subsets(maximum_normalized_distance: float, period_running_person_division_df: pd.DataFrame):
+def get_dbscan_subsets(maximum_normalized_distance: float, moving_people_df: pd.DataFrame):
     """
 
     :param maximum_normalized_distance:
-    :param period_running_person_division_df:
+    :param moving_people_df:
     :return:
     """
     db = DBSCAN(eps=maximum_normalized_distance, min_samples=1)
 
-    db.fit(period_running_person_division_df[['Period', 'X mean']])
+    db.fit(moving_people_df[['Period', 'X mean']])
 
-    period_running_person_division_df['labels'] = db.labels_
+    moving_people_df['labels'] = db.labels_
 
-    # maximum_label = period_running_person_division_df.groupby('labels').apply(len).sort_values(ascending=False).index[0]
+    # maximum_label = moving_people_df.groupby('labels').apply(len).sort_values(ascending=False).index[0]
 
-    dbscan_subsets = period_running_person_division_df.groupby('labels')['Person'].unique().tolist()
+    dbscan_subsets = moving_people_df.groupby('labels')['Person'].unique().tolist()
 
     return [list(i) for i in dbscan_subsets]
 
 
-def iterative_main_traject_finder(period_running_person_division_df: pd.DataFrame,
+def iterative_main_traject_finder(moving_people_df: pd.DataFrame,
                                   running_person_identifiers: any,
                                   period: int,
                                   x: List,
@@ -109,7 +109,7 @@ def iterative_main_traject_finder(period_running_person_division_df: pd.DataFram
     TODO: improve type notation for x, y and define purpose of parameters (define type of plottable people)
 
     :param max_dist:
-    :param period_running_person_division_df:
+    :param moving_people_df:
     :param running_person_identifiers:
     :param period:
     :param x:
@@ -125,7 +125,7 @@ def iterative_main_traject_finder(period_running_person_division_df: pd.DataFram
     f = np.poly1d(z)
 
     # retrieve values that belong to this period (can contain more than one point, when noise is present)
-    period_selection = period_running_person_division_df[period_running_person_division_df['Period'] == period][
+    period_selection = moving_people_df[moving_people_df['Period'] == period][
         ['Period', 'Person', 'X mean']].values
 
     # for each of these points check the RMSE
@@ -153,7 +153,7 @@ def iterative_main_traject_finder(period_running_person_division_df: pd.DataFram
 
 
 def determine_running_person_identifiers(
-        period_running_person_division_df: pd.DataFrame,
+        moving_people_df: pd.DataFrame,
         max_dbscan_subset: List,
         max_rmse: float,
         max_dist: float) -> any:
@@ -175,7 +175,7 @@ def determine_running_person_identifiers(
     :param max_dist:
     :param max_rmse:
     :param max_dbscan_subset:
-    :param period_running_person_division_df:
+    :param moving_people_df:
 
 
     :return running_person_identifiers:
@@ -184,34 +184,34 @@ def determine_running_person_identifiers(
     running_person_identifiers = set(max_dbscan_subset)  # set-up plottable people set
 
     # Make a selection of the dataframe that is contained within the current initial region
-    df_sel = period_running_person_division_df[
-        period_running_person_division_df['Person'].isin(max_dbscan_subset)].sort_values('Period')
+    df_sel = moving_people_df[
+        moving_people_df['Person'].isin(max_dbscan_subset)].sort_values('Period')
 
     x = df_sel['Period'].tolist()  # starting x list
     y = df_sel['X mean'].tolist()  # starting y list
 
     # Region lower and upper bound
     region_lower_bound = \
-    period_running_person_division_df[period_running_person_division_df['Person'] == min(max_dbscan_subset)][
+    moving_people_df[moving_people_df['Person'] == min(max_dbscan_subset)][
         'Period'].min()
     region_upper_bound = \
-    period_running_person_division_df[period_running_person_division_df['Person'] == max(max_dbscan_subset)][
+    moving_people_df[moving_people_df['Person'] == max(max_dbscan_subset)][
         'Period'].max()
 
     # Determine lower and upper periods to cover
-    lower_periods = set(range(period_running_person_division_df['Period'].min(), region_lower_bound)) & set(
-        period_running_person_division_df['Period'])
-    upper_periods = set(range(region_upper_bound + 1, period_running_person_division_df['Period'].max())) & set(
-        period_running_person_division_df['Period'])
+    lower_periods = set(range(moving_people_df['Period'].min(), region_lower_bound)) & set(
+        moving_people_df['Period'])
+    upper_periods = set(range(region_upper_bound + 1, moving_people_df['Period'].max())) & set(
+        moving_people_df['Period'])
 
     for period in upper_periods:
         x, y, running_person_identifiers = \
-            iterative_main_traject_finder(period_running_person_division_df, running_person_identifiers, period, x, y,
+            iterative_main_traject_finder(moving_people_df, running_person_identifiers, period, x, y,
                                           max_rmse, max_dist)
 
     for period in list(lower_periods)[::-1]:
         x, y, running_person_identifiers = \
-            iterative_main_traject_finder(period_running_person_division_df, running_person_identifiers, period, x, y,
+            iterative_main_traject_finder(moving_people_df, running_person_identifiers, period, x, y,
                                           max_rmse, max_dist)
 
     return running_person_identifiers
@@ -220,7 +220,7 @@ def determine_running_person_identifiers(
 def get_running_and_turning_fragments(
         running_person_identifiers: List[int],
         mean_x_per_person: Dict,
-        period_running_person_division_df,
+        moving_people_df,
         moving_people,
         fps: float,
         plot: bool = False):
@@ -232,7 +232,7 @@ def get_running_and_turning_fragments(
     :param fps: The frame rate of the video
     :param running_person_identifiers: The indices of identified 'people' that belong to the running person
     :param mean_x_per_person: Mean x-position of a person in a certain period (average over all joints)
-    :param period_running_person_division_df: Dataframe that contains plottable information for all moving people
+    :param moving_people_df: Dataframe that contains plottable information for all moving people
         (running person + noise)
     :param moving_people: All 'people' that have a normalized moved distance that exceeds a set threshold.
         Contains the running person and possibly noise.
@@ -247,11 +247,11 @@ def get_running_and_turning_fragments(
     # Plot the original dataframe to show the difference between moving_people (incl. noise)
     # and the extract running_person_identifiers
     if plot:
-        pd.DataFrame({key: value for key, value in mean_x_per_person.items() if key in moving_people}).plot()
+        pd.DataFrame({key: value for key, value in mean_x_per_person.items() if key in moving_people}).plot(figsize=(14,10))
 
     # Retrieve dataframe, but only select plottable people
-    running_person_identifiers_df = period_running_person_division_df[
-        period_running_person_division_df['Person'].isin(running_person_identifiers)].sort_values(
+    running_person_identifiers_df = moving_people_df[
+        moving_people_df['Person'].isin(running_person_identifiers)].sort_values(
         'Period')
 
     x = running_person_identifiers_df['Period'].values
@@ -269,43 +269,40 @@ def get_running_and_turning_fragments(
     xnew = np.linspace(min_period, max_period, num=len(x) * 10, endpoint=True)
     ynew = f(xnew)
 
-    # Determine optima indexes for xnew and ynew
-    # Function checks if there is a sign change and if sufficient points (# indicated through 'periods' variable)
-    # surrounding this candidate turning point are not changing in sign
-    periods = int(fps * 10)
-    periods_sign_diff = np.diff(np.sign(np.diff(ynew)))
-    optima_ix = [i + 1 for i in range(len(periods_sign_diff)) if periods_sign_diff[i] != 0
-                 and (periods_sign_diff[i - periods:i] == 0).all()
-                 and (periods_sign_diff[i + 1:i + periods + 1] == 0).all()]  # local min+max
+    # Determine optima indexes for xnew and ynew with a function checking if there is a sign change
+    optima_ix = np.where(np.diff(np.sign(np.diff(ynew))) != 0)[0] + 1
 
     # The optima reflect the turning points, which can be retrieved in terms of frames
-    turning_points = xnew[optima_ix]
-    turning_points = list(
-        map(lambda t: min(running_person_identifiers_df['Period'].unique(), key=lambda x: abs(x - t)), turning_points))
+    frame_optima = xnew[optima_ix]
+    frame_optima = list(
+        map(lambda t: min(running_person_identifiers_df['Period'].unique(), key=lambda x: abs(x - t)),
+            frame_optima))
 
     # Add minimum and maximum period/frame of the interval we look at
-    turning_points = sorted(set(turning_points) | set([min_period, max_period]))
+    frame_optima = sorted(set(frame_optima) | set([min_period, max_period]))
 
     # Locate the x-mean values that belong to these points
-    z = np.polyfit(x, y, 10);
-    f = np.poly1d(z)
-    turning_x = list(f(turning_points))
+    # z = np.polyfit(x, y, 10)
+    # f = np.poly1d(z)
+    x_optima = list(map(lambda x: running_person_identifiers_df.loc[running_person_identifiers_df['Period'] == x, 'X mean'].iloc[0], frame_optima))
 
     # Find the relevant points by checking if it is the minimum and maximum period/frame of the interval or
     # if the points are sufficiently apart in both x and y coordinate
     points_x = []
     points_y = []
-    for i, point in enumerate(turning_points):
-        if point in [min_period, max_period]:
-            points_x.append(point)
-            points_y.append(turning_x[i])
-        else:
-            if abs(turning_x[turning_points.index(points_x[-1])] - turning_x[i]) > 200:
-                points_x.append(point)
-                points_y.append(turning_x[i])
+    for frame, x_mean in zip(frame_optima, x_optima):
+        if frame in [min_period, max_period]:  # always add first and last frame
+            points_x.append(frame)
+            points_y.append(x_mean)
+        # Add next identified frame only if the x_mean difference is larger than a threshold
+        elif abs(points_y[-1] - x_mean) > 300:
+            points_x.append(frame)
+            points_y.append(x_mean)
 
-    # Derive fragments
-    fragments = [(i, j) for i, j in zip(points_x, points_x[1:]) if j - i > fps]
+    # Derive fragments also with last check if frames indicating the start/end of a fragment are
+    # sufficiently far apart
+    fragments = [(i, j) for i, j in zip(points_x, points_x[1:]) if j - i > 2*fps]
+
     if plot:
         # Plot found information
         plt.plot(xnew, ynew)
@@ -317,7 +314,7 @@ def get_running_and_turning_fragments(
 
         # Plot coordinates that will be used in further analyses + identified slow down points
         pd.DataFrame(
-            {key: value for key, value in mean_x_per_person.items() if key in running_person_identifiers}).plot()
+            {key: value for key, value in mean_x_per_person.items() if key in running_person_identifiers}).plot(figsize=(14,10))
         plt.title(
             'All coordinates that will be used in further analyses & \n identified points where a start or a slow-down is finalized')
         plt.xlabel('Frames')
@@ -380,8 +377,8 @@ def get_running_and_turning_fragments(
                 secondDerivative.apply(lambda x: -slow_down_thresh < x < 0))].loc[:upper_bound].index.max()
             max_frame = list(map(lambda x: upper_bound if x != x else x, [max_frame]))[0]
 
-            turning_frames.append(min_frame)
-            turning_frames.append(max_frame)
+            turning_frames.append(min(x, key=lambda x: abs(x - min_frame)))
+            turning_frames.append(min(x, key=lambda x: abs(x - max_frame)))
         else:
             min_frame = secondDerivative[(fragment_series.diff().abs() > avg_first_derivative) & (
                 secondDerivative.apply(lambda x: -start_up_thresh < x < 0))].loc[lower_bound:].index.min()
@@ -391,14 +388,15 @@ def get_running_and_turning_fragments(
                 secondDerivative.apply(lambda x: 0 < x < slow_down_thresh))].loc[:upper_bound].index.max()
             max_frame = list(map(lambda x: upper_bound if x != x else x, [max_frame]))[0]
 
-            turning_frames.append(min_frame)
-            turning_frames.append(max_frame)
+            turning_frames.append(min(x, key=lambda x: abs(x - min_frame)))
+            turning_frames.append(min(x, key=lambda x: abs(x - max_frame)))
 
     if plot:
         # get the estimated x-position where a start or a slow-down is finalized (just for plotting purposes)
-        z = np.polyfit(x, y, 10);
-        f = np.poly1d(z)
-        turning_x = f(turning_frames)
+        # z = np.polyfit(x, y, 10);
+        # f = np.poly1d(z)
+        # turning_x = f(turning_frames)
+        turning_x = list(map(lambda x: running_person_identifiers_df.loc[running_person_identifiers_df['Period'] == x, 'X mean'].iloc[0], turning_frames))
 
         # Adding points to plot where a start or a slow-down is finalized (just for plotting purposes)
         plt.scatter(turning_frames, turning_x)
@@ -504,20 +502,13 @@ def speed_via_distance(period_running_person_division, running_fragments, fragme
 
     distance_in_meters = distance / 1000
 
-    bounds = []
+    lower_bound = np.nanmean(
+        [np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in
+        period_running_person_division[fragments[1][0]].values()])
 
-    for start, end in fragments[1:3]:
-        start_x = np.nanmean(
-            [np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in
-             period_running_person_division[start].values()])
-        end_x = np.nanmean(
-            [np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in
-             period_running_person_division[end].values()])
-
-        bounds = bounds + [start_x, end_x]
-
-    lower_bound = min(bounds)
-    upper_bound = max(bounds)
+    upper_bound = np.nanmean(
+        [np.mean(coords[~(coords == 0).any(axis=1)][:, 0]) for coords in
+        period_running_person_division[fragments[1][1]].values()])
 
     pixel_distance = upper_bound - lower_bound
 
@@ -871,3 +862,92 @@ def get_plottables(period_person_division, running_person_identifiers, running_f
     turning_plottables = dict(filter(lambda x: x[1] != {}, turning_plottables.items()))
 
     return period_running_person_division, running_plottables, turning_plottables
+
+def get_period_person_division(people_per_file: List[List[Dict]], fps: float) \
+        -> Dict[int, Dict[int, any]]:
+    """"
+
+
+    :param fps: number of frames per second in current video
+    :param people_per_file: List of List of dictionaries. So a list of frames, each frame consists of a list of dictionaries in which
+    all identified people in the video are described using the coordinates of the observed joints.
+
+    :return period_person_division: data strucure containing per frame all persons and their
+                                   corresponding coordinates
+
+    """
+
+    frame_person_division = {}  # Dict of dicts
+
+    # used to create a new person when the algorithm can't find a good person fit based on previous x frames
+    next_person = 0
+
+    for frame, file in enumerate(people_per_file):
+        frame_person_division[
+            frame] = {}  # for a frame (period) make a new dictionary in which to store the identified people
+
+        for person in file:
+            # information for identifying people over disjoint frames
+            person_coords = np.array([[x, -y, z] for x, y, z in np.reshape(person['pose_keypoints'], (18, 3))])
+
+            best_person_fit = None  # Initially no best fit person in previous x frames is found
+            if frame == 0:  # frame == 0 means no identified people exist (because first frame), so we need to create them ourselves
+                frame_person_division[frame][
+                    next_person] = person_coords  # create new next people since it is the first frame
+                next_person += 1
+            else:
+                # set sufficiently high rmse so it will be overwritten easily
+                min_rmse = 1000
+
+                # we don't want to base any computation on joints that are not present (==0), so we safe those indices that don't
+                # contain any information
+                empty_joints = set(np.where((person_coords == 0).all(axis=1))[0])
+
+                # only select used joints
+                used_joints = list(set(range(18)) - empty_joints)
+                # set rmse_threshold equal to the mean distance of each used joint to the center
+                rmse_threshold = determine_rmse_threshold(person_coords, used_joints)
+
+                # for all possible previous periods within max_frame_diff
+                for i in range(1, amount_of_frames_to_look_back(fps, frame) + 1):
+                    for earlier_person in frame_person_division[frame - i].keys():  # compare with all people
+                        if earlier_person not in frame_person_division[frame].keys():
+                            # if not already contained in current period
+                            earlier_person_coords = frame_person_division[frame - i][earlier_person]
+                            empty_joints_copy = empty_joints.copy()
+                            empty_joints_copy = empty_joints_copy | set(
+                                np.where((earlier_person_coords == 0).all(axis=1))[0])
+                            used_joints = list(set(range(18)) - empty_joints_copy)
+                            if len(used_joints) == 0:
+                                continue
+                            # compute root mean squared error based only on mutual used joints
+                            person_distance = rmse(earlier_person_coords[used_joints, :], person_coords[used_joints, :])
+                            if person_distance < rmse_threshold:  # account for rmse threshold (only coordinates very close)
+                                if person_distance < min_rmse:  # if best fit, when compared to previous instances
+                                    min_rmse = person_distance  # overwrite
+                                    best_person_fit = earlier_person  # overwrite
+                if best_person_fit is not None:  # if a best person fit is found
+                    frame_person_division[frame][best_person_fit] = person_coords
+                else:  # else create new next person
+                    frame_person_division[frame][next_person] = person_coords
+                    next_person += 1
+    return frame_person_division
+
+
+def get_person_period_division(period_person_division: Dict[int, Dict[int, any]]) \
+        -> Dict[int, Dict[int, np.ndarray]]:
+    """
+    Function that reverses the indexing in the dictionary
+    :param period_person_division: data structure containing per frame all persons and their
+                                   corresponding coordinates
+    :return person_period_division: data structure containing per person all frames and the coordinates
+                                    of that person in that frame.
+    """
+    person_period_division = {}
+    for person in set(chain.from_iterable(period_person_division.values())):
+        person_period_division[person] = {}
+        for period in period_person_division.keys():
+            period_dictionary = period_person_division[period]
+            if person in period_dictionary:
+                person_period_division[person][period] = period_dictionary[person]
+    return person_period_division

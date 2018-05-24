@@ -1,10 +1,8 @@
-# Run openpose
 from typing import Sequence
 
 from pandas import DataFrame, concat
 import time
 
-from learning.regressor import Regressor
 from models import Video
 from models.config import Config
 from models.features import Features
@@ -15,6 +13,13 @@ from functools import reduce
 
 def run(do_run_openpose: bool = True,
         do_build_video: bool = True):
+    """
+    Multivideo pipeline to create a feature Dataframe based on all provided videos to perform analysis on in a
+    later stage
+
+    :param do_run_openpose: Boolean indicating if Openpose should be run or not
+    :param do_build_video: Boolean indicating if the Openpose output is yet to be converted to JSON files
+    """
     config: Config = Config.get_config()
 
     # Run openpose

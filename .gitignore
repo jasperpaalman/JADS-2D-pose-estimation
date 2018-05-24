@@ -9,3 +9,4 @@ videos/*
 *.zip
 openpose/*
 data/*
+**/__pycache__/

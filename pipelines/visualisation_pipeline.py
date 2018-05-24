@@ -8,7 +8,6 @@ from itertools import chain
 from models.config import Config
 from models.video import Video
 from models.preprocessor import Preprocessor
-from models.features import Features
 
 warnings.filterwarnings('ignore')
 
@@ -110,8 +109,8 @@ class Visualisation:
 
             self.ax.set_ylim(cy - stdy * pad, cy + stdy * pad)  # set y-limits by padding around the average center of y
 
-            self.ax.set_xticks([])
-            self.ax.set_yticks([])
+            # self.ax.set_xticks([])
+            # self.ax.set_yticks([])
         else:
             self.ax.set_ylim([0, image_h])
             self.ax.set_xlim([0, image_w])
@@ -180,7 +179,7 @@ class Visualisation:
 
         preprocessor = self.process_data(clip_name)
 
-        period_person_division = preprocessor.get_period_person_division()
+        period_person_division = preprocessor.period_person_division
         running_person_identifiers = preprocessor.get_running_person_identifiers()
         running_fragments = preprocessor.get_running_fragments()
         turning_fragments = preprocessor.get_turning_fragments()
@@ -192,12 +191,12 @@ class Visualisation:
         elif fragment == 'turn':
             plottables = turning_plottables
         else:
-            plottables = period_running_person_divisio
+            plottables = period_running_person_division
 
         self.set_axis_limits(plottables, preprocessor.height, preprocessor.width, zoom=zoom, pad=pad)
 
         animate = animation.FuncAnimation(fig=self.fig, func=self.plot_person, frames=plottables.keys(), fargs=(plottables,
-                        preprocessor.height, preprocessor.width, zoom, pad), interval=interval, init_func=self.func_init, blit=True, repeat=False)
+                        preprocessor.height, preprocessor.width, zoom, pad), interval=interval, init_func=self.func_init, blit=False, repeat=False)
         plt.show()
 
 if __name__ == '__main__':
